@@ -1,0 +1,667 @@
+---
+title: "PRACTICE#9_group6"
+author: "Yewon Lee"
+date: '2021 7 6 '
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(stringr)
+library(class)
+library(ROCR)
+library(FNN)    
+library(ROSE)
+library(e1071)   
+library(Epi)     
+library(class)
+library(caret)
+
+bike_rental_df <- read.csv('SeoulBikeData.csv')
+```
+
+
+# 1-1
+학습데이터와 검증데이터로 분할하여라. 
+학습데이터는 2018년 9월 이전까지, 검증데이터는 2018년 10월 이후 데이터를 사용하여라. 
+
+bike_rental_df를 확인해보니, 1행부터 7294행까지가 2018년 9월 이전 데이터였고, 7295행부터 8760행까지가 2018년 10월 이후 데이터임을 알 수 있었다. 이에 학습데이터에는 1행부터 7296행까지, 검증데이터에는 7297행부터 8760행까지, 각각의 행을 선택하여 분할하였다. 그후 dim명령어를 사용하여, 각 데이터가 각각 7296, 1464으로 분할되었음을 확인하였다. 
+```{r}
+str(bike_rental_df)
+
+train_bike<-bike_rental_df[c(1:7296),]
+test_bike<-bike_rental_df[c(7297:8760),]
+
+dim(train_bike)
+dim(test_bike)
+```
+
+# 1-2
+학습 데이터와 검증 데이터에 대해 각 변수들의 분포를 비교하여라. 
+각 변수들의 분포와 범위를 비교하여라.
+각 변수들이 학습 데이터와 검증 데이터에서 얼마나 비슷하게 분포하는지 설명하여라.
+
+var 명령어를 사용하여, 각 데이터의 분산이 428577, 349664 임을 확인할 수 있었고, sd 명령어를 사용하여, 각 데이터의 표준편차가 654, 591 임을 확인할 수 있었다. 분산과 표준편차를 확인해보았을 때는, 큰 차이가 없어 적절하게 분할되었다고 판단하였다. 
+```{r}
+var(train_bike$Rented.Bike.Count)
+var(test_bike$Rented.Bike.Count)
+sd(train_bike$Rented.Bike.Count)
+sd(test_bike$Rented.Bike.Count)
+
+summary(train_bike$Rented.Bike.Count)
+summary(test_bike$Rented.Bike.Count)
+```
+
+# 1-3 
+kNN 방법을 사용해서 검증 데이터의 자전거 대여 수요를 예측하고자 한다.
+필요하다고 생각하는 전처리 과정이 있다면 수행하여라. 
+어떤 전처리를 수행하였는지 그 이유는 무엇인지 설명하여라. 
+
+Seasons, Holiday, Functioning.Day는 numeric 이 아닌 data type으로 이루어져 있어 해당 변수들을 dummy coding, one hot encoding을 활용하여 새로운 변수 sample_df로 지정해 주었다. 이후 새롭게 만든 dummy 변수를 bike_total의 열에 합병하였다. 그리고, 변수마다 스케일과 범위가 다르기 때문에, 스케일을 맞추어 주기 위한 normalization 과정이 필요하다. 이때, 최소값은 0, 최댓값은 1로 둔, min-max normalization을 사용하였다. date와 label은 계산에서 제외하였다. 이후 summary를 통해, 값의 분포가 0~1 사이로 맞춰진 것을 알 수 있었다.
+train data와 test data의 dimension에 따라, 새롭게 도출해낸 normalized data를 나눠주었다.그리고 마지막으로, kNN 사용을 위한 label을 지정하였다. 
+```{r}
+ 
+dummy_bike <- predict(dummyVars(~ Seasons+Holiday+Functioning.Day, data = bike_rental_df), bike_rental_df)
+bike_total <- cbind(bike_rental_df[,c(-12, -13, -14)], dummy_bike)
+
+minmax_norm <- function(x) {
+  (x-min(x))/(max(x)-min(x))
+}
+
+
+bike_total_norm <- sapply(bike_total[,c(-1, -2)], minmax_norm)
+summary(bike_total_norm)
+
+dim(bike_total_norm)
+
+train_bike_norm <- bike_total_norm[1:7296,]
+test_bike_norm <- bike_total_norm[7297:8760,]
+
+train_bike_norm_label <- bike_total[1:7296, 2]
+test_bike_norm_label <- bike_total[7297:8760,2]
+```
+
+
+
+# 2
+kNN 방법을 사용하여 시간별 자전거 대여 수를 예측하여라 (k는 임의로 선정)
+예측 결과에 대해 RMSE와 R2를 계산하여라. 
+예측 결과에 대해서 어떻게 평가할 수 있는가?
+
+
+
+sqrt 명령어로 도출해낸 85를 k값으로 설정하여, fitting the model and predicition을 진행하였다. kNN을 사용하여 도출해낸 prediction 값을 학습데이터와 검증데이터에 pred라는 열로 추가하였다. 이후 실제값과 예측값의 차를 계산하여, error값을 도출하였고, 이를 학습데이터와 검증데이터에 error라는 열의 이름으로  추가하였다. 각 데이터에서 RMSE와 sd를 비교해 본 결과, 각 데이터의 RMSE값이 sd보다 작으므로, sd보다는 오차가 적은 예측 모델이라고 볼 수 있었다. 각 데이터의 R2을 확인해보니, 각각 0.727, 0.234로 도출되었다. 
+```{r}
+sqrt(nrow(train_bike_norm))
+knnmodel <- knnreg(train_bike_norm, train_bike_norm_label, k = 85)
+
+train_bike$pred <- predict(knnmodel, train_bike_norm)
+test_bike$pred <- predict(knnmodel, test_bike_norm)
+
+head(train_bike[,c("Rented.Bike.Count", "pred")], 10)
+head(test_bike[,c("Rented.Bike.Count", "pred")], 10)
+
+
+
+train_bike$error <- train_bike$Rented.Bike.Count - train_bike$pred
+test_bike$error <- test_bike$Rented.Bike.Count - test_bike$pred
+
+head(train_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+head(test_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+
+
+#### 각 데이터의 RMSE 계산, sd와 비교 
+rmse_train <- caret::RMSE(train_bike$Rented.Bike.Count, train_bike$pred)
+rmse_train
+
+rmse_test <- caret::RMSE(test_bike$Rented.Bike.Count, test_bike$pred)
+rmse_test
+
+sd(train_bike$Rented.Bike.Count)
+sd(test_bike$Rented.Bike.Count)
+
+
+#### 각 데이터의 R2 계산
+train_Rsq <- 1- ((sum(train_bike$error ** 2)) / sum((train_bike$Rented.Bike.Count - mean(train_bike$Rented.Bike.Count))**2))
+train_Rsq
+
+test_Rsq <-  1- ((sum(test_bike$error ** 2)) / sum((test_bike$Rented.Bike.Count - mean(test_bike$Rented.Bike.Count))**2))
+test_Rsq
+
+
+print(paste("R2 for train data",
+            round(train_Rsq, 3)))
+print(paste("R2 for test data",
+            round(test_Rsq, 3)))
+
+
+```
+
+# 3
+다양한 k를 시도해보고 자전거 대여 수요를 가장 잘 예측하는 k를 찾아보시오.
+k를 변화하면서 RMSE와 R2가 변화하는 것을 보기 위해 그래프를 그리시오.
+그래프는 R이나 엑셀이나 어떤 SW 사용해도 되고, 손으로 그려도 됩니다. 가장 성능이 좋은 K는 무엇입니까?
+
+
+K를 하나씩 변경해보고 테스트데이터에서 최적의 성능을 내는 값으로 바꿔줘야했다. 이론적인것은 아니지만 경험적으로 전체 데이터수의 제곱근으로 계산하는 방법이 존재한다고 배웠다. 추가적으로 검색을 통한 공부를 했을 때, 보통 3~10사이로 결정하기도 한다는 정보를 얻어, k=1부터 k=10 까지 시도해보고, 자전거의 대여 수요를 가장 잘 예측하는 k의 값을 찾아보기로 했다. 그리고, k를 변화시키며 R2가 변화하는 것을 시각적으로 확인하고 가장 최적의 k값을 선정하기 위해, plot함수를 사용하여 x축과 y축에 각각 값을 대입한 후 그래프로 확인했다. 그 결과, k의 값이 7일 때 가장 높은 R2값을 도출하는 것을 알 수 있었다.
+```{r}
+## k = 1
+knnmodel <- knnreg(train_bike_norm, train_bike_norm_label, k = 1)
+
+
+#### making prediction with KNN
+train_bike$pred <- predict(knnmodel, train_bike_norm)
+test_bike$pred <- predict(knnmodel, test_bike_norm)
+
+head(train_bike[,c("Rented.Bike.Count", "pred")], 10)
+head(test_bike[,c("Rented.Bike.Count", "pred")], 10)
+
+
+#### calculating error
+train_bike$error <- train_bike$Rented.Bike.Count - train_bike$pred
+test_bike$error <- test_bike$Rented.Bike.Count - test_bike$pred
+
+head(train_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+head(test_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+
+
+#### 각 데이터의 RMSE 계산, sd와 비교 
+rmse_train <- caret::RMSE(train_bike$Rented.Bike.Count, train_bike$pred)
+rmse_train
+
+rmse_test <- caret::RMSE(test_bike$Rented.Bike.Count, test_bike$pred)
+rmse_test
+
+
+#### R2 계산
+train_Rsq <- 1- ((sum(train_bike$error ** 2)) / sum((train_bike$Rented.Bike.Count - mean(train_bike$Rented.Bike.Count))**2))
+train_Rsq
+
+test_Rsq <-  1- ((sum(test_bike$error ** 2)) / sum((test_bike$Rented.Bike.Count - mean(test_bike$Rented.Bike.Count))**2))
+test_Rsq
+
+
+print(paste("R2 for train data",
+            round(train_Rsq, 3)))
+print(paste("R2 for test data",
+            round(test_Rsq, 3)))
+
+
+## k = 1일때,
+## "R2 for train data 1" // 0
+## "R2 for test data -0.051" // 606.0568
+
+
+
+
+
+
+
+## k = 2
+knnmodel <- knnreg(train_bike_norm, train_bike_norm_label, k = 2)
+
+
+#### making prediction with KNN
+train_bike$pred <- predict(knnmodel, train_bike_norm)
+test_bike$pred <- predict(knnmodel, test_bike_norm)
+
+head(train_bike[,c("Rented.Bike.Count", "pred")], 10)
+head(test_bike[,c("Rented.Bike.Count", "pred")], 10)
+
+
+#### calculating error
+train_bike$error <- train_bike$Rented.Bike.Count - train_bike$pred
+test_bike$error <- test_bike$Rented.Bike.Count - test_bike$pred
+
+head(train_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+head(test_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+
+
+#### 각 데이터의 RMSE 계산, sd와 비교 
+rmse_train <- caret::RMSE(train_bike$Rented.Bike.Count, train_bike$pred)
+rmse_train
+
+rmse_test <- caret::RMSE(test_bike$Rented.Bike.Count, test_bike$pred)
+rmse_test
+
+
+#### R2 계산
+train_Rsq <- 1- ((sum(train_bike$error ** 2)) / sum((train_bike$Rented.Bike.Count - mean(train_bike$Rented.Bike.Count))**2))
+train_Rsq
+
+test_Rsq <-  1- ((sum(test_bike$error ** 2)) / sum((test_bike$Rented.Bike.Count - mean(test_bike$Rented.Bike.Count))**2))
+test_Rsq
+
+
+print(paste("R2 for train data",
+            round(train_Rsq, 3)))
+print(paste("R2 for test data",
+            round(test_Rsq, 3)))
+
+
+## k = 2일때,
+## "R2 for train data 0.935" // 167.4202
+## "R2 for test data 0.241" // 515.0535
+
+
+
+
+
+
+## k = 3
+knnmodel <- knnreg(train_bike_norm, train_bike_norm_label, k = 3)
+
+
+#### making prediction with KNN
+train_bike$pred <- predict(knnmodel, train_bike_norm)
+test_bike$pred <- predict(knnmodel, test_bike_norm)
+
+head(train_bike[,c("Rented.Bike.Count", "pred")], 10)
+head(test_bike[,c("Rented.Bike.Count", "pred")], 10)
+
+
+#### calculating error
+train_bike$error <- train_bike$Rented.Bike.Count - train_bike$pred
+test_bike$error <- test_bike$Rented.Bike.Count - test_bike$pred
+
+head(train_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+head(test_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+
+
+#### 각 데이터의 RMSE 계산, sd와 비교 
+rmse_train <- caret::RMSE(train_bike$Rented.Bike.Count, train_bike$pred)
+rmse_train
+
+rmse_test <- caret::RMSE(test_bike$Rented.Bike.Count, test_bike$pred)
+rmse_test
+
+
+#### R2 계산
+train_Rsq <- 1- ((sum(train_bike$error ** 2)) / sum((train_bike$Rented.Bike.Count - mean(train_bike$Rented.Bike.Count))**2))
+train_Rsq
+
+test_Rsq <-  1- ((sum(test_bike$error ** 2)) / sum((test_bike$Rented.Bike.Count - mean(test_bike$Rented.Bike.Count))**2))
+test_Rsq
+
+
+print(paste("R2 for train data",
+            round(train_Rsq, 3)))
+print(paste("R2 for test data",
+            round(test_Rsq, 3)))
+
+
+## k = 3일때, 
+## "R2 for train data 0.912" // 194.4631
+## "R2 for test data 0.294" // 496.7979 
+ 
+
+
+
+
+
+## k = 4
+knnmodel <- knnreg(train_bike_norm, train_bike_norm_label, k = 4)
+
+
+#### making prediction with KNN
+train_bike$pred <- predict(knnmodel, train_bike_norm)
+test_bike$pred <- predict(knnmodel, test_bike_norm)
+
+head(train_bike[,c("Rented.Bike.Count", "pred")], 10)
+head(test_bike[,c("Rented.Bike.Count", "pred")], 10)
+
+
+#### calculating error
+train_bike$error <- train_bike$Rented.Bike.Count - train_bike$pred
+test_bike$error <- test_bike$Rented.Bike.Count - test_bike$pred
+
+head(train_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+head(test_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+
+
+#### 각 데이터의 RMSE 계산, sd와 비교 
+rmse_train <- caret::RMSE(train_bike$Rented.Bike.Count, train_bike$pred)
+rmse_train
+
+rmse_test <- caret::RMSE(test_bike$Rented.Bike.Count, test_bike$pred)
+rmse_test
+
+
+#### R2 계산
+train_Rsq <- 1- ((sum(train_bike$error ** 2)) / sum((train_bike$Rented.Bike.Count - mean(train_bike$Rented.Bike.Count))**2))
+train_Rsq
+
+test_Rsq <-  1- ((sum(test_bike$error ** 2)) / sum((test_bike$Rented.Bike.Count - mean(test_bike$Rented.Bike.Count))**2))
+test_Rsq
+
+
+print(paste("R2 for train data",
+            round(train_Rsq, 3)))
+print(paste("R2 for test data",
+            round(test_Rsq, 3)))
+
+
+## k = 4일때, 
+## "R2 for train data 0.895" // 211.9446
+## "R2 for test data 0.324" // 485.9841
+
+
+
+
+
+## k = 5
+knnmodel <- knnreg(train_bike_norm, train_bike_norm_label, k = 5)
+
+
+#### making prediction with KNN
+train_bike$pred <- predict(knnmodel, train_bike_norm)
+test_bike$pred <- predict(knnmodel, test_bike_norm)
+
+head(train_bike[,c("Rented.Bike.Count", "pred")], 10)
+head(test_bike[,c("Rented.Bike.Count", "pred")], 10)
+
+
+#### calculating error
+train_bike$error <- train_bike$Rented.Bike.Count - train_bike$pred
+test_bike$error <- test_bike$Rented.Bike.Count - test_bike$pred
+
+head(train_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+head(test_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+
+
+#### 각 데이터의 RMSE 계산, sd와 비교 
+rmse_train <- caret::RMSE(train_bike$Rented.Bike.Count, train_bike$pred)
+rmse_train
+
+rmse_test <- caret::RMSE(test_bike$Rented.Bike.Count, test_bike$pred)
+rmse_test
+
+
+#### R2 계산
+train_Rsq <- 1- ((sum(train_bike$error ** 2)) / sum((train_bike$Rented.Bike.Count - mean(train_bike$Rented.Bike.Count))**2))
+train_Rsq
+
+test_Rsq <-  1- ((sum(test_bike$error ** 2)) / sum((test_bike$Rented.Bike.Count - mean(test_bike$Rented.Bike.Count))**2))
+test_Rsq
+
+
+print(paste("R2 for train data",
+            round(train_Rsq, 3)))
+print(paste("R2 for test data",
+            round(test_Rsq, 3)))
+
+
+## k = 5일때,
+## "R2 for train data 0.882" // 224.6379
+## "R2 for test data 0.326" // 485.1526
+
+
+
+## k = 6
+knnmodel <- knnreg(train_bike_norm, train_bike_norm_label, k = 6)
+
+
+#### making prediction with KNN
+train_bike$pred <- predict(knnmodel, train_bike_norm)
+test_bike$pred <- predict(knnmodel, test_bike_norm)
+
+head(train_bike[,c("Rented.Bike.Count", "pred")], 10)
+head(test_bike[,c("Rented.Bike.Count", "pred")], 10)
+
+
+#### calculating error
+train_bike$error <- train_bike$Rented.Bike.Count - train_bike$pred
+test_bike$error <- test_bike$Rented.Bike.Count - test_bike$pred
+
+head(train_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+head(test_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+
+
+#### 각 데이터의 RMSE 계산, sd와 비교 
+rmse_train <- caret::RMSE(train_bike$Rented.Bike.Count, train_bike$pred)
+rmse_train
+
+rmse_test <- caret::RMSE(test_bike$Rented.Bike.Count, test_bike$pred)
+rmse_test
+
+
+#### R2 계산
+train_Rsq <- 1- ((sum(train_bike$error ** 2)) / sum((train_bike$Rented.Bike.Count - mean(train_bike$Rented.Bike.Count))**2))
+train_Rsq
+
+test_Rsq <-  1- ((sum(test_bike$error ** 2)) / sum((test_bike$Rented.Bike.Count - mean(test_bike$Rented.Bike.Count))**2))
+test_Rsq
+
+
+print(paste("R2 for train data",
+            round(train_Rsq, 3)))
+print(paste("R2 for test data",
+            round(test_Rsq, 3)))
+
+
+## k = 6일때,
+## "R2 for train data 0.872" // 234.0717
+## "R2 for test data 0.334" // 482.3801
+
+
+
+## k = 7
+knnmodel <- knnreg(train_bike_norm, train_bike_norm_label, k = 7)
+
+
+#### making prediction with KNN
+train_bike$pred <- predict(knnmodel, train_bike_norm)
+test_bike$pred <- predict(knnmodel, test_bike_norm)
+
+head(train_bike[,c("Rented.Bike.Count", "pred")], 10)
+head(test_bike[,c("Rented.Bike.Count", "pred")], 10)
+
+
+#### calculating error
+train_bike$error <- train_bike$Rented.Bike.Count - train_bike$pred
+test_bike$error <- test_bike$Rented.Bike.Count - test_bike$pred
+
+head(train_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+head(test_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+
+
+#### 각 데이터의 RMSE 계산, sd와 비교 
+rmse_train <- caret::RMSE(train_bike$Rented.Bike.Count, train_bike$pred)
+rmse_train
+
+rmse_test <- caret::RMSE(test_bike$Rented.Bike.Count, test_bike$pred)
+rmse_test
+
+
+#### R2 계산
+train_Rsq <- 1- ((sum(train_bike$error ** 2)) / sum((train_bike$Rented.Bike.Count - mean(train_bike$Rented.Bike.Count))**2))
+train_Rsq
+
+test_Rsq <-  1- ((sum(test_bike$error ** 2)) / sum((test_bike$Rented.Bike.Count - mean(test_bike$Rented.Bike.Count))**2))
+test_Rsq
+
+
+print(paste("R2 for train data",
+            round(train_Rsq, 3)))
+print(paste("R2 for test data",
+            round(test_Rsq, 3)))
+
+
+## k = 7일때,
+## "R2 for train data 0.866" // 239.6033
+## "R2 for test data 0.341" // 479.9845
+
+
+## k = 8
+knnmodel <- knnreg(train_bike_norm, train_bike_norm_label, k = 8)
+
+
+#### making prediction with KNN
+train_bike$pred <- predict(knnmodel, train_bike_norm)
+test_bike$pred <- predict(knnmodel, test_bike_norm)
+
+head(train_bike[,c("Rented.Bike.Count", "pred")], 10)
+head(test_bike[,c("Rented.Bike.Count", "pred")], 10)
+
+
+#### calculating error
+train_bike$error <- train_bike$Rented.Bike.Count - train_bike$pred
+test_bike$error <- test_bike$Rented.Bike.Count - test_bike$pred
+
+head(train_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+head(test_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+
+
+#### 각 데이터의 RMSE 계산, sd와 비교 
+rmse_train <- caret::RMSE(train_bike$Rented.Bike.Count, train_bike$pred)
+rmse_train
+
+rmse_test <- caret::RMSE(test_bike$Rented.Bike.Count, test_bike$pred)
+rmse_test
+
+
+#### R2 계산
+train_Rsq <- 1- ((sum(train_bike$error ** 2)) / sum((train_bike$Rented.Bike.Count - mean(train_bike$Rented.Bike.Count))**2))
+train_Rsq
+
+test_Rsq <-  1- ((sum(test_bike$error ** 2)) / sum((test_bike$Rented.Bike.Count - mean(test_bike$Rented.Bike.Count))**2))
+test_Rsq
+
+
+print(paste("R2 for train data",
+            round(train_Rsq, 3)))
+print(paste("R2 for test data",
+            round(test_Rsq, 3)))
+
+
+## k = 8일때,
+## "R2 for train data 0.862" // 243.5623
+## "R2 for test data 0.333" // 482.6411
+
+
+## k = 9
+knnmodel <- knnreg(train_bike_norm, train_bike_norm_label, k = 9)
+
+
+#### making prediction with KNN
+train_bike$pred <- predict(knnmodel, train_bike_norm)
+test_bike$pred <- predict(knnmodel, test_bike_norm)
+
+head(train_bike[,c("Rented.Bike.Count", "pred")], 10)
+head(test_bike[,c("Rented.Bike.Count", "pred")], 10)
+
+
+#### calculating error
+train_bike$error <- train_bike$Rented.Bike.Count - train_bike$pred
+test_bike$error <- test_bike$Rented.Bike.Count - test_bike$pred
+
+head(train_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+head(test_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+
+
+#### 각 데이터의 RMSE 계산, sd와 비교 
+rmse_train <- caret::RMSE(train_bike$Rented.Bike.Count, train_bike$pred)
+rmse_train
+
+rmse_test <- caret::RMSE(test_bike$Rented.Bike.Count, test_bike$pred)
+rmse_test
+
+
+#### R2 계산
+train_Rsq <- 1- ((sum(train_bike$error ** 2)) / sum((train_bike$Rented.Bike.Count - mean(train_bike$Rented.Bike.Count))**2))
+train_Rsq
+
+test_Rsq <-  1- ((sum(test_bike$error ** 2)) / sum((test_bike$Rented.Bike.Count - mean(test_bike$Rented.Bike.Count))**2))
+test_Rsq
+
+
+print(paste("R2 for train data",
+            round(train_Rsq, 3)))
+print(paste("R2 for test data",
+            round(test_Rsq, 3)))
+
+
+## k = 9일때,
+## "R2 for train data 0.857" // 247.5321
+## "R2 for test data 0.327" // 485.1062
+
+
+
+## k = 10
+knnmodel <- knnreg(train_bike_norm, train_bike_norm_label, k = 10)
+
+
+#### making prediction with KNN
+train_bike$pred <- predict(knnmodel, train_bike_norm)
+test_bike$pred <- predict(knnmodel, test_bike_norm)
+
+head(train_bike[,c("Rented.Bike.Count", "pred")], 10)
+head(test_bike[,c("Rented.Bike.Count", "pred")], 10)
+
+
+#### calculating error
+train_bike$error <- train_bike$Rented.Bike.Count - train_bike$pred
+test_bike$error <- test_bike$Rented.Bike.Count - test_bike$pred
+
+head(train_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+head(test_bike[, c("Rented.Bike.Count", "pred", "error")], 10)
+
+
+#### 각 데이터의 RMSE 계산, sd와 비교 
+rmse_train <- caret::RMSE(train_bike$Rented.Bike.Count, train_bike$pred)
+rmse_train
+
+rmse_test <- caret::RMSE(test_bike$Rented.Bike.Count, test_bike$pred)
+rmse_test
+
+
+#### R2 계산
+train_Rsq <- 1- ((sum(train_bike$error ** 2)) / sum((train_bike$Rented.Bike.Count - mean(train_bike$Rented.Bike.Count))**2))
+train_Rsq
+
+test_Rsq <-  1- ((sum(test_bike$error ** 2)) / sum((test_bike$Rented.Bike.Count - mean(test_bike$Rented.Bike.Count))**2))
+test_Rsq
+
+
+print(paste("R2 for train data",
+            round(train_Rsq, 3)))
+print(paste("R2 for test data",
+            round(test_Rsq, 3)))
+
+
+## k = 10일때,
+## "R2 for train data 0.852" // 251.6332
+## "R2 for test data 0.322" // 486.624
+
+
+# y1 -> test data에 대한 R2, y2 -> train data에 대한 R2, y3 -> test data rmse
+x1 <- c(2:10)
+y1 <- c( 0.241, 0.294, 0.324, 0.326, 0.334, 0.341, 0.333, 0.327, 0.322)
+
+y3 <- c(515.0535, 496.7979, 485.9841, 485.1526, 482.3801, 479.9845, 482.6411, 485.1062, 486.624)
+
+plot(x1, y1, xlab="k", ylab="R2", type="b")
+plot(x1, y3, xlab="k", ylab="RMSE", type="b")
+
+
+```
+
+
+# 4
+앞서 발견한 최적의 k를 사용한 결과에 대해서, x축에는 예측값, y축에는 실제 자전거 대여수를 표현하는 산점도를 그리라. 그래프와 함께 y=x 선도 함께 그리라. 
+선위에 나타난 점들과 선 아래 점들, 선에 가깝거나 겹치게 나타난 점들이 의미하는 것은 무엇인가?
+
+선 위는 underrated된 값으로 예측한 값보다 실제 값이 더 높은 것, 선 아래는 overrated된 값으로 예측한 값보다 실제값이 더 낮은 것이다. 
+선에 따라 가는 점들은 예측값과 예상값이 일치하여 정확한 예측이었음을 나타낸다.
+```{r}
+plot(x=train_bike$pred,
+     y=train_bike$Rented.Bike.Count, 
+     main='Seoul bike rental dataset from UCI data repository',
+     xlab='Predicted Bike-rents', 
+     ylab='Actual # of bike rental')
+
+abline(lm(train_bike$Rented.Bike.Count ~ train_bike$pred), col = "red")
+```
+

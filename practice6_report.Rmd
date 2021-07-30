@@ -1,0 +1,712 @@
+---
+title: "Practice6_report"
+author: "team8"
+date: '2021 7 2'
+output: html_document
+---
+
+1. 미세먼지 농도(pm2.5)를 예측하는 Single Variable 모델을 만들어보려고 한다.\
+가장 먼저 train과 test 데이터의 타입을 확인해보자. 또한 train과 test 데이터에서 NA가 얼마나 있는지 확인하고,주로 몰려있는 날짜나 기간이 있는지 확인하여보자.\
+pm2.5는 목적변수이므로 NA가 허용되지 않는다. 이를 삭제해보자.\
+```{r}
+PRSA_data <- load("data/PRSA_data.RData")
+library("tidyr")
+library("dplyr")
+glimpse(test_data)
+glimpse(train_data)
+colSums(is.na(train_data))
+colSums(is.na(test_data))
+```
+RData 파일을 load로 불러오고 필요한 library 패키지를 설정해놨다.
+이후 train과 test에서 na 데이터가 위치한 변수는 미세먼지농도(pm2.5) 변수에서 나타나는 것으로 확인되었다.\
+
+추가로 월별로 NA값이 몇개 있는지 table로 확인하여 어느 월에 특히 많이 분포했는지 확인하였다. \
+```{r}
+train_month <- subset(train_data, is.na(train_data$pm2.5))
+test_month<-subset(test_data, is.na(test_data$pm2.5))
+table(train_month$Month)
+table(test_month$Month)
+```
+확인 결과 train은 8월, 9월,4월 순서로 가장 NA값이 많았고 test는 12월, 11월, 6월 순서로 NA값이 많았다.\
+
+pm2.5를 예측하는 값으로 활용하기 위해서 NA값을 모두 지우도록 한다.\
+```{r}
+train_data <- na.omit(train_data)
+test_data <- na.omit(test_data)
+```
+\
+\
+
+
+
+
+2.1 Month 변수를 활용하여 pm2.5를 예측하는 Single Variable 모델을 만들어보자. 이때 Threshold는 0.5로 설정하도록 하자.또한 이 모델의 정확도(Accuracy)을 train과 test 데이터에서 계산해보도록 하자. • 일반적으로 예측 모형에서  예측 대상이 되는 (관심대상인) class의 sample을 positive sample로 간주합니다. 여기에서는 미세먼지가 나쁨인 pm2.5 = HIGH인 경우를 positive(TRUE) sample로 보고 문제를 풀어봅시다.\
+```{r}
+tble <- table(train_data$Month, train_data$pm2.5)
+tble
+prop.table(tble, margin =1)
+```
+table을 활용해서 월별로 미세먼지농도의 HIGH, LOW로 측정된 총값을 비교해보고 해당 값으로\
+prop.table을 활용해 table의 값을 행 기준인 월단위로 HIGH와 LOW의 비율을 확인 할 수 있도록 했다.\
+
+```{r}
+train.model <- prop.table(tble, margin = 1)[,1]
+sort(train.model, decreasing =  T)
+```
+prop.table에서 HIGH값을 나온 비율을 positive sample로 보고 문제를 풀기 위해 HIGH(1행)만 선택해 train.model로 설정했다.\
+이후 나온 모델의 값들을 내림차순으로 확인해서 6월,7월,2월의 미세먼지 수치 나쁨 비율이 가장 높은 것을 확인 할 수 있었다.\
+
+```{r}
+train_data$est_prob <- train.model[train_data$Month]
+threshold <- 0.5
+
+train_data$prediction <- train_data$est_prob >threshold
+
+conf.table <- table(pred = train_data$prediction, actual = train_data$pm2.5)
+conf.table
+accuracy <- round(sum(conf.table[1,2]+ conf.table[2.1]) / sum(conf.table),2)
+accuracy
+```
+모델 값을 확인 했으니 이제는 train 데이터에서 월별로 미세먼지 수치 나쁨 확률(train_data$est_prob)을 확인 해볼 차례다.\
+threshold를 0.5로 설정 한 후 모델의 정확도(Accuracy)를 계산하기 위해 conf.table 테이블을 만들었다.
+conf.table은 미세먼지 나쁨 확률 예측값과 실제 나쁨으로 나온 값을 비교한다.
+여기서 HIGH를 true값으로 Accuracy(정확도)를 계산하기로 했기 때문에\
+conf.table의 총값 중 HIGH-TRUE(4626)와 LOW-FALSE(13161)값을 더한값의 비율을 확인한다.\
+확인한 결과 train_data의 Accuracy는 0.54이다.\
+
+
+아래는 같은 방법으로 test_data의 Accuracy를 확인해보았다.
+
+```{r}
+test_data$est.prop<-train.model[test_data$Month]
+head(test_data,10)
+test_data$predict<-test_data$est.prop>threshold
+head(test_data,10)
+```
+이쯤에서 test_data의 예측하는 비율(est.prop)이라는 새로운 변수를 만들고 변수값은 위에서 만든 모델값을 월별로 나오도록 설정한다.\
+첫행 10줄을 확인해보면 원데이터프래임에서 새로운 열 2개가 생겼고 threshold(0.5)보다 낮게 나온 1월의 예측 비율은 모두 예측변수에서 FALSE로 처리가 됨을 볼 수 있다.\
+
+```{r}
+conf.table_test<-table(pred=test_data$predict,actual=test_data$pm2.5)
+conf.table_test
+accuracy_test<-round((conf.table_test[1,2]+conf.table_test[2,1])/sum(conf.table_test),2)
+accuracy_test
+```
+확인한 결과 test_data의 Accuracy는 0.51이다.\
+
+아래는 train과 test의 precision과 recall을 한번에 볼 수 있도록 한 테이블이다.
+precision은 미세먼지가 high로 나올 확률값을 나타내고 recall은 실제 미세먼지가 high로 나온 값의 비율이다.
+```{r}
+precision<-conf.table[2,1]/sum(conf.table[2,])
+recall<-conf.table[2,1]/sum(conf.table[,1])
+precision_test<-conf.table_test[2,1]/sum(conf.table_test[2,])
+recall_test<-conf.table_test[2,1]/sum(conf.table_test[,1])
+
+train_pre.recall<-cbind(precision,recall)
+test_pre.recall<-cbind(precision_test,recall_test)
+rbind(train_pre.recall,test_pre.recall)
+```
+\
+
+
+
+2.2 문제 2-1에서 구한 모델의 AUC를 train과 test 데이터 각각에 대해서 계산해보고, ROC 커브를 그려보자.\
+```{r,echo}
+library(ROCR)
+
+calAUC<-function(predCol, targetCol){
+  perf<-performance(prediction(predCol,targetCol),'auc')
+  as.numeric(perf@y.values)
+}
+```
+ROC커브와 AUC값을 구하기 위해서는 ROCR 패키지를 설치해야 한다.\
+AUC값을 구하기 위해 calAUC 계산식을 인터넷에서 찾아와 사용하였다.\
+
+```{r}
+AUC_train<-calAUC(train_data$est_prob,train_data$pm2.5)
+plot(performance(prediction(train_data$est_prob,train_data$pm2.5),'tpr','fpr'))
+```
+train_data의 ROC curve을 보면 곡선으로 TPR와 FPR 값이 상향비례 하는 것을 볼 수 있다.\
+
+
+```{r}
+AUC_test<-calAUC(test_data$est.prop,test_data$pm2.5)
+plot(performance(prediction(test_data$est.prop,test_data$pm2.5),'tpr','fpr'))
+```
+반면, test_data의 ROC curve는 비교적 계단형식으로 상향하는 것을 볼 수 있다.\
+실제 AUC 값은 아래와 같다\
+```{r}
+print(paste("AUC value  for train data", round(AUC_train, 2)))
+print(paste("AUC value  for test data", round(AUC_test, 2)))
+```
+train AUC 수치는 0.45, test AUC는 0.52로 test가 더 높다.\
+
+
+2.3 문제 2-1, 2-2를 바탕으로 이 모델은 과적합(overfitting)인지, 아닌지 설명하여보라.
+train AUC 수치는 0.45, test AUC는 0.52로 test가 더 높다.\
+AUC 값이 높을수록 좋은 모델이라고 할 수 있다. \
+그런데 Threshold 0.5를 기준으로 train AUC가 0.55로 test AUC 0.48보다 크니까 overfitting이라고 할 수 있다. \
+
+
+2.4 문제 2-1에서 구한 모델의 threshold를 바꿔가면서 precision과 recall 값의 변화를 확인해보자.\
+**threshold가 0.45일 때**
+```{r}
+threshold <- 0.45
+train_data$prediction <- train_data$est_prob >threshold
+
+conf.table <- table(pred = train_data$prediction, actual = train_data$pm2.5)
+accuracy <- round(sum(conf.table[1,2]+ conf.table[2.1]) / sum(conf.table),2)
+
+
+test.model<-prop.table(table(test_data$Month,test_data$pm2.5),1)[,1]
+test_data$est.prop<-train.model[test_data$Month]
+head(test_data,10)
+test_data$predict<-test_data$est.prop>threshold
+head(test_data,10)
+
+conf.table_test<-table(pred=test_data$predict,actual=test_data$pm2.5)
+conf.table_test
+accuracy_test<-round((conf.table_test[1,2]+conf.table_test[2,1])/sum(conf.table_test),2)
+accuracy_test
+
+calAUC <- function(predCol, targetCol){
+  perf <- performance(prediction(predCol,targetCol),'auc')
+  as.numeric(perf@y.values)
+}
+
+AUC.train <- calAUC(train_data$est_prob, train_data$pm2.5 == "HIGH")
+AUC.test <- calAUC(test_data$est.prop, test_data$pm2.5 == "HIGH")
+
+print(paste("AUC value  for train data", round(AUC.train, 2)))
+plot(performance(prediction(train_data$est_prob,train_data$pm2.5),'tpr','fpr'))
+
+print(paste("AUC value  for test data", round(AUC.test, 2)))
+plot(performance(prediction(test_data$est.prop,test_data$pm2.5),'tpr','fpr'))
+
+
+precision <- conf.table[2,1] / sum(conf.table[2,])
+recall <- conf.table[2,1] / sum(conf.table[,1])
+
+precision.t <- conf.table_test[2,1] / sum(conf.table_test[2,])
+recall.t <- conf.table_test[2,1] / sum(conf.table_test[,1])
+```
+threshold가 0.45일 때 나오는 precision과 recall 값은 아래와 같다.\
+
+precision 0.5081895\
+recall  0.7773469\
+precision.t 0.4782006\
+recall.t 0.7385201\
+
+**threshold가 0.55일 때**
+```{r}
+threshold <- 0.55
+train_data$prediction <- train_data$est_prob >threshold
+
+conf.table <- table(pred = train_data$prediction, actual = train_data$pm2.5)
+accuracy <- round(sum(conf.table[1,2]+ conf.table[2.1]) / sum(conf.table),2)
+
+
+test.model<-prop.table(table(test_data$Month,test_data$pm2.5),1)[,1]
+test_data$est.prop<-train.model[test_data$Month]
+head(test_data,10)
+test_data$predict<-test_data$est.prop>threshold
+head(test_data,10)
+
+conf.table_test<-table(pred=test_data$predict,actual=test_data$pm2.5)
+conf.table_test
+accuracy_test<-round((conf.table_test[1,2]+conf.table_test[2,1])/sum(conf.table_test),2)
+accuracy_test
+
+calAUC <- function(predCol, targetCol){
+  perf <- performance(prediction(predCol,targetCol),'auc')
+  as.numeric(perf@y.values)
+}
+
+AUC.train <- calAUC(train_data$est_prob, train_data$pm2.5 == "HIGH")
+AUC.test <- calAUC(test_data$est.prop, test_data$pm2.5 == "HIGH")
+
+print(paste("AUC value  for train data", round(AUC.train, 2)))
+plot(performance(prediction(train_data$est_prob,train_data$pm2.5),'tpr','fpr'))
+
+print(paste("AUC value  for test data", round(AUC.test, 2)))
+plot(performance(prediction(test_data$est.prop,test_data$pm2.5),'tpr','fpr'))
+
+
+precision <- conf.table[2,1] / sum(conf.table[2,])
+recall <- conf.table[2,1] / sum(conf.table[,1])
+
+precision.t <- conf.table_test[2,1] / sum(conf.table_test[2,])
+recall.t <- conf.table_test[2,1] / sum(conf.table_test[,1])
+```
+threshold가 0.45일 때 나오는 precision과 recall 값은 아래와 같다.\
+
+precision 0.6217617\
+recall  0.1034164\
+precision.t 0.2830725\
+recall.t 0.04734713\
+\
+
+
+2.5 문제 2-4에서 나온 결과를 바탕으로 threshold를 어떻게 설정하는 것이 좋을지 생각해보고, 그 이유와 함께
+설명해보자.
+
+항목|threshold 0.45| threshold 0.5| threshold 0.55
+-----|----------|---------------|---------------
+precision |0.5081895|0.5562771|0.6217617
+recall|0.7773469|0.2847645|0.1034164
+precision.t |0.4782006|0.4907539|0.2830725
+recall.t |0.7385201|0.2462527|0.04734713
+
+precision은 미세먼지가 high로 나올 확률값을 나타내고 recall은 실제 미세먼지가 high로 나온 값의 비율이다.\
+0.45는 train, test의 precision과 recall 값이 높지만 그만큼 미세먼지가 나쁘다고 선택되는 기준점이 낮아지고 미세먼지 지수가 나쁘니 야외활동 등을 자제하라는 일수가 더 많아진다. \
+실제 일상에 적용할 경우 거의 매일 미세먼지가 나쁘다고 뜰수 있다. \
+
+0.55를 할 경우 train과 test의 precision과 recall 값의 차이가 크므로 정확하다고 보기에는 힘들다.\
+
+따라서 recall이 precision보다 낮지만 비교적 train 과 test 값들이 비슷한 수준인 0.5 threshold를 선택하는것이 괜찮다고 보인다.\
+
+
+
+
+2.6 Trade-off 관계에 있는 precision과 recall을 하나의 measure로 보기 위해서 F1 Score라는 것을 사용하기도 한다.\
+문제 2-4에서 선정한 threshold를 기준으로 F1 score를 계산해보자. F1 score는 아래 식과 같이 계산한다
+```{r}
+F1.train <- 2 * precision * recall / (precision + recall)
+F1.test <- 2 * precision.t * recall.t / (precision.t + recall.t)
+```
+F1 값은 아래와 같다.\
+F1.train  0.6145909\
+F1.test  0.5805124\
+\
+
+
+3. TEMP 변수를 사용해서 문제 2번의 과정을 반복해보자.\
+3-1\
+TEMP는 continuous variable로 섭씨 온도를 나타낸다.
+continuous variable로 미세먼지 수치 비율을 찾기에는 복잡하기 때문에 TEMP의 최저값과 최대값을 기준으로 총 6개의 온도 range를 정해주었다.\
+6개의 온도 range는 영하, 그리고 10도씩 온도를 나눠주었고 각 range마다 온도 이름을 정해주었다.
+```{r}
+train_data$TEMP_GRP <- cut(train_data$TEMP, breaks = c(-19, 0, 10, 20, 30, 41), include.lowest = T)
+levels(train_data$TEMP_GRP)<-c('Very cold', 'cold', 'cool', 'hot', 'Very hot')
+```
+
+```{r}
+tble2 <- table(train_data$TEMP_GRP, train_data$pm2.5)
+tble2
+```
+TEMP 6개 range를 기준으로 보면 미세먼지 나쁨으로 나오는 수치는 hot(20~30도)사이가 가장 높았다.\
+Very cold(영하)의 경우 다른 range에 비해 약 2배가 되는 온도가 들어갔으나 미세먼지 나쁨 수치는 비교적 낮은 편에 속한다.\
+Very hot은 30~41도로 실제 41도까지 올라가는 날씨는 많지 않아 미세먼지 측정 수치가 적은 것으로 보인다.\
+여기서 주목할 점은 6개의 온도 range 중 hot 온도만 유일하게 미세먼지 나쁨 수치가 미세먼지 괜찮은 수치보다 많은 것이다. 다른 온도는 나쁨 수치보다 괜찮다는 수치가 더 높았으나 hot만 유일하게 1,000 수치로 미세먼지 나쁨이 많은 것을 볼 수 있다. \
+#따라서 미세먼지 나쁨은 20~30도 사이일때 가장 많이 일어나는 것으로 유추할 수 있다.\ 
+
+TEMP_GRP의 pm2.5 값을 계산하기 위한 식은 echo=false로 보이지 않도록 하고 accuracy 값만 보이도록 설정하였다\
+```{r,echo=FALSE}
+prop.table(tble2, margin =1)
+train.model2 <- prop.table(tble2, margin = 1)[,1]
+sort(train.model2, decreasing =  T)
+
+train_data$est_prob2 <- train.model2[train_data$TEMP_GRP]
+threshold <- 0.5
+
+train_data$prediction2 <- train_data$est_prob2 > threshold
+
+conf.table2 <- table(pred = train_data$prediction2, actual = train_data$pm2.5)
+conf.table2
+accuracy2 <- round(sum(conf.table2[1,2]+ conf.table2[2.1]) / sum(conf.table2),2)
+accuracy2
+
+test_data$TEMP_GRP <- cut(test_data$TEMP, breaks = c(-19, 0, 10, 20, 30, 41), include.lowest = T)
+levels(test_data$TEMP_GRP)<-c('Very cold', 'cold', 'cool', 'hot', 'Very hot')
+test.model2 <- prop.table(table(test_data$TEMP_GRP, test_data$pm2.5),1)[,1]
+test_data$est.prop2 <- train.model2[test_data$TEMP_GRP]
+head(test_data,10)
+test_data$predict2 <- test_data$est.prop2 > threshold
+head(test_data,10)
+
+conf.table_test2 <- table(pred=test_data$predict2,actual=test_data$pm2.5)
+conf.table_test2
+accuracy_test2 <-round((conf.table_test2[1,2]+conf.table_test2[2,1])/sum(conf.table_test2),2)
+accuracy_test2
+```
+온도의 train accuracy2는 0.54, accuracy_test2는 0.5이다.\
+
+AUC값을 계산하던 중 test_data$TEMP_GRP에 NA값이 있는 것을 확인하여 na.omit로 NA값을 제거하고 AUC값을 계속 구해주었다.\
+```{r}
+train_data <- na.omit(train_data)
+test_data <- na.omit(test_data)
+
+AUC.train2 <- calAUC(train_data$est_prob2, train_data$pm2.5 == "HIGH")
+AUC.test2 <- calAUC(test_data$est.prop2, test_data$pm2.5 == "HIGH")
+
+colSums(is.na(test_data))
+test_data <- na.omit(test_data)
+AUC.test2 <- calAUC(test_data$est.prop2, test_data$pm2.5 == "HIGH")
+
+print(paste("AUC value  for train data", round(AUC.train2, 2)))
+plot(performance(prediction(train_data$est_prob2,train_data$pm2.5),'tpr','fpr'))
+
+print(paste("AUC value  for test data", round(AUC.test2, 2)))
+plot(performance(prediction(test_data$est.prop2,test_data$pm2.5),'tpr','fpr'))
+```
+TEMP의 AUC값은 아래와 같다.\
+AUC value  for train data 0.55\
+AUC value  for test data 0.53\
+
+
+3-3\
+Threshold 0.5를 기준으로 train AUC가 0.55로 test AUC 0.53보다 크니까 overfitting이라고 할 수 있다.\ 
+
+3-4\
+아래는 threshold가 0.45, 0.55일때의 값을 찾는 과정이다. 반복되는 과정이니 세부 코드는 echo=F로 넘기고 결과값만 보이도록 하겠다.
+
+```{r}
+ # threshold가 0.45일 때
+threshold <- 0.45
+train_data$prediction2 <- train_data$est_prob2 > threshold
+
+conf.table2 <- table(pred = train_data$prediction2, actual = train_data$pm2.5)
+conf.table2
+accuracy2 <- round(sum(conf.table2[1,2]+ conf.table2[2.1]) / sum(conf.table2),2)
+accuracy2
+
+
+test_data$TEMP_GRP <- cut(test_data$TEMP, breaks = c(-19, 0, 10, 20, 30, 42), include.lowest = T)
+levels(test_data$TEMP_GRP)<-c('Very cold', 'cold', 'cool', 'hot', 'Very hot')
+test.model2 <- prop.table(table(test_data$TEMP_GRP, test_data$pm2.5),1)[,1]
+test_data$est.prop2 <- train.model2[test_data$TEMP_GRP]
+head(test_data,10)
+test_data$predict2 <- test_data$est.prop2 > threshold
+head(test_data,10)
+
+conf.table_test2 <- table(pred=test_data$predict2,actual=test_data$pm2.5)
+conf.table_test2
+accuracy_test2 <-round((conf.table_test2[1,2]+conf.table_test2[2,1])/sum(conf.table_test2),2)
+accuracy_test2
+
+
+calAUC <- function(predCol, targetCol){
+  perf <- performance(prediction(predCol,targetCol),'auc')
+  as.numeric(perf@y.values)
+}
+
+AUC.train2 <- calAUC(train_data$est_prob2, train_data$pm2.5 == "HIGH")
+AUC.test2 <- calAUC(test_data$est.prop2, test_data$pm2.5 == "HIGH")
+
+print(paste("AUC value  for train data", round(AUC.train2, 2)))
+plot(performance(prediction(train_data$est_prob2,train_data$pm2.5),'tpr','fpr'))
+
+print(paste("AUC value  for test data", round(AUC.test2, 2)))
+plot(performance(prediction(test_data$est.prop2,test_data$pm2.5),'tpr','fpr'))
+
+
+precision2 <- conf.table2[2,1] / sum(conf.table2[2,])
+recall2 <- conf.table2[2,1] / sum(conf.table2[,1])
+
+precision.t2 <- conf.table_test2[2,1] / sum(conf.table_test2[2,])
+recall.t2 <- conf.table_test2[2,1] / sum(conf.table_test2[,1])
+
+precision2
+recall2
+precision.t2
+recall.t2
+
+ # threshold가 0.48일 때
+threshold <- 0.48
+train_data$prediction2 <- train_data$est_prob2 > threshold
+
+conf.table2 <- table(pred = train_data$prediction2, actual = train_data$pm2.5)
+conf.table2
+accuracy2 <- round(sum(conf.table2[1,2]+ conf.table2[2.1]) / sum(conf.table2),2)
+accuracy2
+
+
+test_data$TEMP_GRP <- cut(test_data$TEMP, breaks = c(-19, 0, 10, 20, 30, 42), include.lowest = T)
+levels(test_data$TEMP_GRP)<-c('Very cold', 'cold', 'cool', 'hot', 'Very hot')
+test.model2 <- prop.table(table(test_data$TEMP_GRP, test_data$pm2.5),1)[,1]
+test_data$est.prop2 <- train.model2[test_data$TEMP_GRP]
+head(test_data,10)
+test_data$predict2 <- test_data$est.prop2 > threshold
+head(test_data,10)
+
+conf.table_test2 <- table(pred=test_data$predict2,actual=test_data$pm2.5)
+conf.table_test2
+accuracy_test2 <-round((conf.table_test2[1,2]+conf.table_test2[2,1])/sum(conf.table_test2),2)
+accuracy_test2
+
+
+calAUC <- function(predCol, targetCol){
+  perf <- performance(prediction(predCol,targetCol),'auc')
+  as.numeric(perf@y.values)
+}
+
+AUC.train2 <- calAUC(train_data$est_prob2, train_data$pm2.5 == "HIGH")
+AUC.test2 <- calAUC(test_data$est.prop2, test_data$pm2.5 == "HIGH")
+
+print(paste("AUC value  for train data", round(AUC.train2, 2)))
+plot(performance(prediction(train_data$est_prob2,train_data$pm2.5),'tpr','fpr'))
+
+print(paste("AUC value  for test data", round(AUC.test2, 2)))
+plot(performance(prediction(test_data$est.prop2,test_data$pm2.5),'tpr','fpr'))
+
+
+precision2 <- conf.table2[2,1] / sum(conf.table2[2,])
+recall2 <- conf.table2[2,1] / sum(conf.table2[,1])
+
+precision.t2 <- conf.table_test2[2,1] / sum(conf.table_test2[2,])
+recall.t2 <- conf.table_test2[2,1] / sum(conf.table_test2[,1])
+
+precision2
+recall2
+precision.t2
+recall.t2
+```
+
+
+항목|threshold 0.45| threshold 0.48| threshold 0.5
+-----|----------|---------------|---------------
+precision2 |0.5073648|0.5536435|0.5536435
+recall2|0.7718067|0.3208372|0.3208372
+precision.t2 |0.4996817|0.5140542|0.4763289
+recall.t2 |0.7470854|0.4829883|0.2729003
+
+
+TEMP의 경우 threshold를 0.55로 설정하든 0.5로 설정하든 이를 넘는 구간이 ‘hot’ 구간 하나이므로 똑같은 precison, recall 값을 가지니, threshold를 0.48로 지정하여 ‘very cold’ 구간까지 같이 적용되도록 평가해봤고 위와 같은 결과값을 얻을 수 있었다.\
+
+precision은 미세먼지가 high로 나올 확률값을 나타내고 recall은 실제 미세먼지가 high로 나온 값의 비율이다.\
+0.45는 train, test의 precision과 recall 값이 높지만 그만큼 미세먼지가 나쁘다고 선택되는 기준점이 낮아지고 미세먼지 지수가 나쁘니 야외활동 등을 자제하라는 일수가 더 많아진다. 실제 일상에 적용할 경우 거의 매일 미세먼지가 나쁘다고 뜰수 있다. \
+0.48를 할 경우 train과 test의 precision과 recall 값의 차이가 크므로 정확하다고 보기에는 힘들다.\
+따라서 recall이 precision보다 낮지만 비교적 train 과 test 값들이 비슷한 수준인 0.5 threshold를 선택하는것이 괜찮다고 보인다.\
+
+3-6\
+F1값은 아래와 같이 구하고 결과값을 확인 할 수 있다.
+```{r}
+F1.train2 <- 2 * precision2 * recall2 / (precision2 + recall2)
+F1.test2 <- 2 * precision.t2 * recall.t2 / (precision.t2 + recall.t2)
+```
+F1.train2 : 0.4062512
+F1.test2 : 0.3469974
+\
+\
+
+4-1\
+Iws는 누적풍속으로 m/s로 변수값이 정렬되어 있다.
+```{r,echo=F}
+train_data$Iws_GRP <- cut(train_data$Iws, breaks = c(0, 20, 40, 70, 100, 200, Inf), include.lowest = T)
+levels(train_data$Iws_GRP)<-c('calm', 'breeze', 'gale', 'hurricane', 'over 200 m/s', 'Inf')
+
+tble4 <- table(train_data$Iws_GRP, train_data$pm2.5)
+tble4
+prop.table(tble4, margin =1)
+train.model4 <- prop.table(tble4, margin = 1)[,1]
+sort(train.model4, decreasing =  T)
+
+train_data$est_prob4 <- train.model4[train_data$Iws_GRP]
+threshold <- 0.5
+
+train_data$prediction4 <- train_data$est_prob4 > threshold
+
+conf.table4 <- table(pred = train_data$prediction4, actual = train_data$pm2.5)
+conf.table4
+accuracy4 <- round(sum(conf.table4[1,2]+ conf.table4[2.1]) / sum(conf.table4),2)
+accuracy4
+
+test_data$Iws_GRP <- cut(test_data$Iws, breaks = c(0, 20, 40, 70, 100, 200, Inf), include.lowest = T)
+levels(test_data$Iws_GRP)<-c('calm', 'breeze', 'gale', 'hurricane', 'over 200 m/s', 'Inf')
+test.model4 <- prop.table(table(test_data$Iws_GRP, test_data$pm2.5),1)[,1]
+test_data$est.prop4 <- train.model4[test_data$Iws_GRP]
+head(test_data,10)
+test_data$predict4 <- test_data$est.prop4 > threshold
+head(test_data,10)
+
+conf.table_test4 <- table(pred=test_data$predict4,actual=test_data$pm2.5)
+conf.table_test4
+accuracy_test4 <-round((conf.table_test4[1,2]+conf.table_test4[2,1])/sum(conf.table_test4),2)
+accuracy_test4
+```
+Iws의 train accuracy4 값은 0.61, accuracy_test4는 0.57이다./
+
+
+4-2\
+```{r}
+AUC.train4 <- calAUC(train_data$est_prob4, train_data$pm2.5 == "HIGH")
+AUC.test4 <- calAUC(test_data$est.prop4, test_data$pm2.5 == "HIGH")
+
+print(paste("AUC value  for train data", round(AUC.train4, 2)))
+"AUC value  for train data 0.62"
+plot(performance(prediction(train_data$est_prob4,train_data$pm2.5),'tpr','fpr'))
+
+print(paste("AUC value  for test data", round(AUC.test4, 2)))
+ "AUC value  for test data 0.59"
+plot(performance(prediction(test_data$est.prop4,test_data$pm2.5),'tpr','fpr'))
+
+```
+Lws의 AUC값은 아래와 같다.\
+AUC value  for train data 0.62\
+AUC value  for test data 0.59\
+
+\
+
+4-3\
+Threshold 0.5를 기준으로 train AUC가 0.62로 test AUC 0.59보다 크니까 overfitting이라고 할 수 있다.\ 
+
+4-4\
+
+4-5\
+precision은 미세먼지가 high로 나올 확률값을 나타내고 recall은 실제 미세먼지가 high로 나온 값의 비율이다.\
+세 threshold 다 train recall 값이 높게 측정된 것을 알 수 있다.
+그나마 세 threshold 중에서 test recall이 가장 낮게 측정된 0.5를 threshold로 측정했다.
+
+4-6\
+F1값은 아래와 같이 구하고 결과값을 확인 할 수 있다.
+```{r,include=F}
+precision4 <- conf.table4[2,1] / sum(conf.table4[2,])
+recall4 <- conf.table4[2,1] / sum(conf.table4[,1])
+
+precision.t4 <- conf.table_test4[2,1] / sum(conf.table_test4[2,])
+recall.t4 <- conf.table_test4[2,1] / sum(conf.table_test4[,1])
+
+precision4
+recall4
+precision.t4
+recall.t4
+```
+F1.train4 : 0.6768609
+F1.test4 : 0.6604327
+\
+항목|threshold 0.45| threshold 0.5| threshold 0.5
+-----|----------|---------------|---------------
+precision4 |0.5460436|0.5460436|0.5017481
+recall4|0.9780856|0.9337027|0.9982764
+precision.t4 |0.5092672|0.5202826|0.537211
+recall.t4 |0.987152|0.945991|0.8570069
+\
+\
+
+
+5. time 변수를 사용해서 문제 2번의 과정을 반복해보자.\
+Time은 day와 night 으로 나눠져있다. 위와 같은 과정을 반복하기 때문에 결과값만 나타내고 나머지 과정은 echo=F로 보이지 않도록 처리하였다.
+```{r,echo=F}
+#5-1
+tble3 <- table(train_data$time, train_data$pm2.5)
+tble3
+prop.table(tble3, margin =1)
+train.model3 <- prop.table(tble3, margin = 1)[,1]
+sort(train.model3, decreasing =  T)
+
+train_data$est_prob3 <- train.model3[train_data$time]
+threshold <- 0.5
+
+train_data$prediction3 <- train_data$est_prob3 > threshold
+
+conf.table3 <- table(pred = train_data$prediction3, actual = train_data$pm2.5)
+accuracy3 <- round(sum(conf.table3[1,2]+ conf.table3[2.1]) / sum(conf.table3),2)
+accuracy3
+
+test.model3<-prop.table(table(test_data$time, test_data$pm2.5),1)[,1]
+test_data$est.prop3 <- train.model3[test_data$time]
+head(test_data,10)
+test_data$predict3 <- test_data$est.prop3 > threshold
+head(test_data,10)
+
+conf.table_test3 <- table(pred=test_data$predict3, actual=test_data$pm2.5)
+conf.table_test3
+accuracy_test3 <- round((conf.table_test3[1,2]+conf.table_test3[2,1])/sum(conf.table_test3),2)
+accuracy_test3
+```
+Time의 train accuracy3는 0.53 , accuracy_test3 : 0.54이다.\
+
+
+```{r}
+#5-2 
+AUC.train3 <- calAUC(train_data$est_prob3, train_data$pm2.5 == "HIGH")
+AUC.test3 <- calAUC(test_data$est.prop3, test_data$pm2.5 == "HIGH")
+
+print(paste("AUC value  for train data", round(AUC.train3, 2)))
+"AUC value  for train data 0.53"
+plot(performance(prediction(train_data$est_prob3,train_data$pm2.5),'tpr','fpr'))
+
+print(paste("AUC value  for test data", round(AUC.test3, 2)))
+"AUC value  for test data 0.54"
+plot(performance(prediction(test_data$est.prop3,test_data$pm2.5),'tpr','fpr'))
+```
+TIME의 AUC값은 아래와 같다.\
+AUC value  for train data 0.53\
+AUC value  for test data 0.54\
+
+
+5-3\
+time을 기준으로 한 모델은 Threshold 0.5를 기준으로 test AUC가 0.54로 train AUC 0.53보다 크니까 overfitting이 아니라고 할 수 있다. /
+
+5-4\
+아래는 threshold가 0.45, 0.55일때의 값을 찾는 과정이다. 반복되는 과정이니 세부 코드는 echo=F로 넘기고 결과값만 보이도록 하겠다.\
+```{r,echo=F}
+# threshold가 0.4 0.5 0.6일때
+threshold <- 0.6 
+
+train_data$prediction3 <- train_data$est_prob3 > threshold
+
+conf.table3 <- table(pred = train_data$prediction3, actual = train_data$pm2.5)
+accuracy3 <- round(sum(conf.table3[1,2]+ conf.table3[2.1]) / sum(conf.table3),2)
+accuracy3
+
+test.model3<-prop.table(table(test_data$time, test_data$pm2.5),1)[,1]
+test_data$est.prop3 <- train.model3[test_data$time]
+head(test_data,10)
+test_data$predict3 <- test_data$est.prop3 > threshold
+head(test_data,10)
+
+conf.table_test3 <- table(pred=test_data$predict3, actual=test_data$pm2.5)
+conf.table_test3
+accuracy_test3 <- round((conf.table_test3+conf.table_test3)/sum(conf.table_test3),2)
+accuracy_test3
+
+calAUC <- function(predCol, targetCol){
+  perf <- performance(prediction(predCol,targetCol),'auc')
+  as.numeric(perf@y.values)
+}
+
+AUC.train3 <- calAUC(train_data$est_prob3, train_data$pm2.5 == "HIGH")
+AUC.test3 <- calAUC(test_data$est.prop3, test_data$pm2.5 == "HIGH")
+
+print(paste("AUC value  for train data", round(AUC.train3, 2)))
+plot(performance(prediction(train_data$est_prob3,train_data$pm2.5),'tpr','fpr'))
+
+print(paste("AUC value  for test data", round(AUC.test3, 2)))
+plot(performance(prediction(test_data$est.prop3,test_data$pm2.5),'tpr','fpr'))
+
+
+precision3 <- conf.table3 / sum(conf.table3)
+recall3 <- conf.table3 / sum(conf.table3)
+
+precision.t3 <- conf.table_test3 / sum(conf.table_test3)
+recall.t3 <- conf.table_test3 / sum(conf.table_test3)
+
+#precision3 0.5158281
+#recall3 0.6570022
+#precision.t3 0.5167005
+#recall.t3 0.6661908
+```
+
+5-5\
+→ > sort(train.model3, decreasing =  T)
+night|day  
+-------------
+0.5158281|0.4491737
+
+night와 day가 pm2.5에서 high를 받을 확률이다.\
+비교대상이 두개이기에 0.6을  threshold로 설정하면 night와 day가 모두 TRUE 값을 출력하게 되고 0.5를 threshold로 설정하면 night만 TRUE 값을 출력한다. 0.4를 threshold로 설정하면 night와 day가 모두 FAlSE 값을 출력하는 것을 볼 수 있다.\
+아 세 threshold로 각각 precision과 recall 값을 구해봤는데 모두 같은 값을 출력하는 것을 볼 수 있었다. 그렇기에 세 값 중 어느 값이든 선택해도 되겠다는 결론에 이르렀고 TRUE와 FALSE를 각각 하나씩 출력하는 0.5를 threshold로 선정하는 것이 가장 낫다고 판단했다.
+
+5-6\
+F1값은 아래와 같이 구하고 결과값을 확인 할 수 있다.
+```{r}
+F1.train3 <- 2 * precision3 * recall3 / (precision3 + recall3)
+F1.test3 <- 2 * precision.t3 * recall.t3 / (precision.t3 + recall.t3)
+```
+F1.train3 : 0.5779186
+F1.test3 : 0.5819996
+
+
+
+

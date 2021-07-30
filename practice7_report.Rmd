@@ -1,0 +1,396 @@
+---
+title: "practice7_report"
+author: "team8"
+date: "7/4/2021"
+output: html_document
+---
+
+```{r}
+PRSA_data <- read.csv("~/Documents/University/semester5/Data Science/practice/data/PRSA_data.csv")
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(lubridate)
+library(ROCR)
+library(ggplot2)
+```
+
+
+#### Q1. 미세먼지 농도(pm2.5)를 예측하는 Single Variable Regression 모델을 만들어보려고 한다. 가장 먼저 전체 데이터를 train과 test 용도로 분할한다.\
+- 2010년부터 2013년 데이터를 train 데이터로 하고, 2014년 데이터를 test 데이터로 분할하여라.\
+- 그리고 목적 변수인 pm2.5 값에 NA인 것이 있다면 삭제하고 필요한 전처리 과정이 있다면 수행하여라.\
+- train 데이터와 test 데이터의 sample 수는 어떻게 나누어졌으며 비율은 어떠한가?\
+- train 데이터의 pm2.5 값과 test 데이터의 pm2.5 값의 분포(평균, 분산)를 비교하여 보고 비슷한지 확인하 여라.\
+\
+
+- #### **code**
+ 
+```{r}
+str(PRSA_data)
+glimpse(PRSA_data)
+
+#remove column
+PRSA_data <-PRSA_data[,-1]
+
+##divide into train data and test data
+train_data<-subset(PRSA_data, PRSA_data$year<2014)
+test_data <- subset(PRSA_data, PRSA_data$year==2014)
+
+colSums(is.na(train_data))
+colSums((is.na(test_data)))
+
+train_month <- subset(train_data, is.na(train_data$pm2.5))
+test_month<-subset(test_data, is.na(test_data$pm2.5))
+table(train_month$month)
+table(test_month$month)
+
+## number of sample before delete NA
+num_train <-nrow(train_data)
+num_test <-nrow(test_data)
+
+## Delete NA
+train_data <- na.omit(train_data)
+test_data <- na.omit(test_data)
+
+## number of sample agter delete NA
+num_train <-nrow(train_data)
+num_test <-nrow(test_data)
+
+## rate before delete NA
+round(prop.table(table(PRSA_data$year<2014))*100,2)
+## rate After remove NA
+round(nrow(train_data) / (num_train+ num_test)*100,2)
+round(nrow(test_data) / (num_train + num_test)*100,2)
+
+#draw graph
+plot(density(train_data$pm2.5),xlim = c(0,1000), ylim=c(0,0.01))
+par(new = TRUE)
+lines(density(test_data$pm2.5), col="red")
+var(train_data$pm2.5)
+var(test_data$pm2.5)
+```
+ 
+- #### **Solution** \
+
+na 제거 전  train, test 비율\
+Train : 80.01%\
+Test : 19.98%\
+\
+na를 제거한 train, test 비율\
+Train : 79.26%\
+Test : 20.74%\
+na 제거 전과 후를 봐도 8:2로 train_data와 test_data가 적절히 분배된 것을 확인할 수 있다.\
+\
+NA를 제거한 후 train data는 33096개의 sample, test data에는 8661개의 sample이 있다. 즉 test_data와 train_data는 각각 약 20%, 80%로 나눠졌다. NA는 모두 pm2.5 변수에만 존재한다. NA를 포함한 row는 모두 지웠다. 두 데이터의 분포 형태는 비슷하지만 train data의 x=20~30의 빈도 수치가 0.001 더 높았다.\
+train_var은 8401.34863, test_var은 8748.14674이다. summary 함수를 통해 살펴보면 Max 값에서 차이가 크게 나기 때문에 의미있게 데이터를 구분한 것인가에 대한 의문이 들 수 있지만 Max값을 제외한 1st Quantile, Median, Mean, 3rd Quantile, Var이 train_data와 test_data가 유사하기 때문에 잘 나눠졌다고 할 수 있다.\
+\
+
+
+#### Q2-1. month를 사용하여 pm2.5를 예측하는 단일 변수 모델(single variable model)을 만들어라. 예측한 pm2.5 값과 실제 값과의 차이를 error(residual)로 데이터에 추가하여라\
+
+- #### **code**
+ 
+```{r}
+#log
+PRSA_data <- na.omit(PRSA_data)
+PRSA_data$pm2.5_log <- log10(PRSA_data$pm2.5)
+train_data$pm2.5_log <- log10(train_data$pm2.5)
+
+## training data
+sv_reg_month_log <- tapply(train_data$pm2.5_log, train_data$month, mean)
+
+##training
+train_data$pred_pm2.5_log <- sv_reg_month_log[train_data$month]
+
+# head(train_data[,c('month', 'pred_pm2.5_log', 'pm2.5_log', 'pm2.5')])
+train_data$error_log <- train_data$pm2.5_log - train_data$pred_pm2.5_log
+
+
+##not log
+sv_reg_month <- tapply(train_data$pm2.5, train_data$month, mean)
+train_data$pred_pm2.5 <- sv_reg_month[train_data$month]
+
+#head(train_data[,c('month', 'pred_pm2.5_log', 'pm2.5')])
+
+train_data$error <- train_data$pm2.5 - train_data$pred_pm2.5
+
+head(train_data[,c('month', 'pm2.5', 'pred_pm2.5', 'error')], 10)
+
+```
+ 
+- #### **Solution** \
+error가 X- X(m)이기 때문에 tapply 함수를 사용하여 월 별로 pm2.5의 평균을 먼저 구한다.\
+\
+
+#### Q2-2. Question 2-1에서 구한 모델의 MSE와 RMSE 구하라. 이 모델을 test data에도 적용하여 MSE와 RMSE를 구하라\
+
+- #### **code**
+```{r}
+##MSE and RMSE, not log
+MSE_train <- round(mean(train_data$error ** 2),3)
+RMSE_train <- round(sqrt(MSE_train),3)
+
+## MSE and RMSE fort test, not log
+test_data$pred_pm2.5 <- sv_reg_month[test_data$month]
+test_data$error <- test_data$pm2.5 - test_data$pred_pm2.5
+#head(test_data[,c('month', 'pm2.5', 'pred_pm2.5', 'error')], 10)
+
+MSE_test <- round(mean(test_data$error ** 2),3)
+RMSE_test <- round(sqrt(MSE_test),3)
+
+paste("train data: (MSE ", MSE_train,") (RMSE",RMSE_train, ")", sep=" ")
+paste("test data: (MSE ", MSE_test,") (RMSE",RMSE_test, ")", sep=" ")
+
+
+#**log version**#
+
+## MSE and RMSE fort test, using log
+MSE_train_log <- round(mean(train_data$error ** 2),3)
+RMSE_train_log <- round(sqrt(MSE_train),3)
+
+## MSE and RMSE fort test, not log
+test_data$pred_pm2.5_log <- sv_reg_month[test_data$month]
+test_data$error_log <- test_data$pm2.5 - test_data$pred_pm2.5
+#head(test_data[,c('month', 'pm2.5', 'pred_pm2.5', 'error')], 10)
+
+MSE_test_log <- round(mean(test_data$error_log ** 2),3)
+RMSE_test_log <- round(sqrt(MSE_test_log),3)
+
+# paste("train data: (MSE ", MSE_train_log,") (RMSE",RMSE_train_log, ")", sep=" ")
+# paste("test data: (MSE ", MSE_test_log,") (RMSE",RMSE_test_log, ")", sep=" ")
+```
+
+
+- #### **Solution** \
+MSE는  mean squared error로 평균 제곱 오차로 불린다. 간단히 말하면 오차의 제곱에 대해 평균을 취한 것이다. 작을 수록 원본과의 오차가 적은 것이므로 추측한 값의 정확성이 높은 것으로 볼 수 있다. 그러나 데이터 원값과의 단위가 달라지기 때문에 RMSE로 MSE의 root값을 적용해 원값과 같은 단위로 만들어주어 평균 오차를 확인 해볼 수 있다.\
+
+확인해보면 아래와 같은 오차 수준을 확인 해볼 수 있다.\
+
+data/measure|MSE| RMSE
+------------|----------------|--------------------
+train|8254.242|90.853
+test|8397.312|91.637
+\
+train의 예측값이 실제값에서 90.853(log) 떨어져있기 때문에 1090.853 더 크거나 작아야 되고 test의 경우 1091.637 더 크거나 작아야 한다.\
+오차값이 크기 때문에 정확성이 높지 않다고 판단된다.\
+
+
+RMSE, R2값의 차이가 다른 이유는?\
+RMSE: train이 더 좋음\
+R^2: test가 더 좋음\
+RMSE는 오차 평균 제곱값임.\
+R^2는 RMSE에서 나오는 몰려나오는 분포와 값 예측이 잘 안 될 수 있기 때문에, R^2를 사용한다. \
+\
+
+RMSE는 예측과 실제값의 차이가 얼마나 나오는지 확인. (변동 심할수록 RMSE는 커짐, 즉 변동이 없을경우 정확하게 맞춰야 함)\
+그러나 그 변동에서도 잘 예측하는 값은 R^2로 볼 수 있음. (variance 대비 얼마나 잘 맞추느냐)\
+ train의 variance 변동이 커서 RMSE값이 더 크게 나왔다.\
+\
+
+
+\
+
+#### Q2-3. Question 2-1에서 구한 모델을 적용하여 train data와 test data의 R2 값을 구하고, 그것을 바탕으로 만들어진 단일변수 모델이 pm2.5의 변동을 얼마나 잘 설명하고 있는지 이야기해보자. \
+
+- #### **code**
+```{r}
+RSS <- sum(train_data$error **2)
+RSS
+
+SStot <- sum((train_data$pm2.5 - mean(train_data$pm2.5))**2)
+Rsq_train <- round(1- RSS/SStot,3)
+Rsq_train
+
+paste("R2 for train data:", Rsq_train)
+
+RSS  <- sum(test_data$error **2)
+SStot <- sum((test_data$pm2.5 - mean(test_data$pm2.5))**2)
+Rsq_test <- round(1- RSS/SStot,3)
+
+paste("R2 for test data:", Rsq_test)
+
+
+#*log version*#
+RSS <- sum(train_data$error_log **2)
+RSS
+
+SStot <- sum((train_data$pm2.5_log - mean(train_data$pm2.5_log))**2)
+Rsq_train <- round(1- RSS/SStot,3)
+Rsq_train
+
+paste("R2 for train data:", Rsq_train)
+
+RSS  <- sum(test_data$error_log **2)
+SStot <- sum((test_data$pm2.5_log - mean(test_data$pm2.5_log))**2)
+Rsq_test <- round(1- RSS/SStot,3)
+
+paste("R2 for test data:", Rsq_test)
+
+
+```
+
+
+- #### **Solution** \
+
+R2 는 1값에 가까울수록 모델값과 잘 맞는 것이고 0에 가까울 수록 의미없는 모델임을 볼 수 있다. Train data의 R2는 0.017, Test data의 R2는 0.04로 나왔다. 0에 가까운 값이므로 의미없는 모델로 판단된다.\
+train의 MSE가 test보다 작은 것을 확인할 수 있다 그렇기에 R^2이 train이 test보다 더 커야 하는데 SStot / n (var)이 다르기 때문에, var이 test가 더 크기 때문에 R^2이 test가 더 크다고 할 수 있다.\
+\
+
+
+#### Q3. hour 변수를 사용해서 Question 2번의 과정을 반복하라.hour를 어떤 구간으로 나누어서 모델은 만드는 것이 효과적인가?\
+
+- #### **code**
+```{r}
+table(train_data$hour)
+# train_data$hour_group <- cut(train_data$hour, breaks = c(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21,22,23), include.lowest = T)
+train_data$hour_group <- cut(train_data$hour, breaks = c(0,3,6,9,12,15,18,21,23), include.lowest = T)
+#levels(train_data$hour_group) <- c('midnight', 'morning', 'afternoon', 'night')
+
+sv_reg_hour <- tapply(train_data$pm2.5, train_data$hour_group, mean)
+
+train_data$pred_pm2.5_hour <- (sv_reg_hour[train_data$hour_group])
+train_data$error <- train_data$pm2.5 - train_data$pred_pm2.5_hour
+head(train_data[,c('month', 'pm2.5', 'pred_pm2.5_hour', 'error')], 10)
+
+
+MSE_train <- round(mean(train_data$error ** 2),3)
+RMSE_train <- round(sqrt(MSE_train),3)
+
+test_data$hour_group <- cut(test_data$hour, breaks = c(0,3,6,9,12,15,18,21,23), include.lowest = T)
+test_data$pred_pm2.5_hour <- sv_reg_hour[test_data$hour_group]
+test_data$error <- test_data$pm2.5 - test_data$pred_pm2.5_hour
+
+MSE_test <- round(mean(test_data$error ** 2),3)
+RMSE_test <- round(sqrt(MSE_test),3)
+
+paste("train data: (MSE ", MSE_train,") (RMSE",RMSE_train, ")", sep=" ")
+paste("test data: (MSE ", MSE_test,") (RMSE",RMSE_test, ")", sep=" ")
+
+##Rsq
+RSS <- sum(train_data$error **2)
+RSS
+
+SStot <- sum((train_data$pm2.5 - mean(train_data$pm2.5))**2)
+Rsq_train <- round(1- RSS/SStot,3)
+Rsq_train
+
+paste("R2 for train data:", Rsq_train)
+
+RSS  <- sum(test_data$error **2)
+SStot <- sum((test_data$pm2.5 - mean(test_data$pm2.5))**2)
+Rsq_test <- round(1- RSS/SStot,3)
+
+paste("R2 for test data:", Rsq_test)
+```
+
+
+- #### **Solution** \
+R2|1시간 단위|3시간 단위|6시간 단위|12시간 단위
+----|-------------|-------------|-------------|------------------------
+Test|0.04|0.04|0.04|0.04
+Train|0.011|0.01|0.008|0
+\
+R2 는 1값에 가까울수록 모델값과 잘 맞는 것이고 0에 가까울 수록 의미없는 모델임을 볼 수 있다. \
+시간대를 1시간 단위, 3시간 단위, 6시간 단위, 그리고 12시간 단위로 확인해봤을 때 Train data의 R2는 시간 범위가 커질수록 0.01에서 0으로 떨어졌다. \
+Test data의 R2는 시간 범위가 달라도 동일한 값인 0.04로 나왔다. 차이가 조금 보이지만 결론적으로 test와 train 값이 모두 0에 가까운 값이므로 의미없는 모델로 판단된다.\
+
+
+
+\
+
+
+#### Q4. 동일한 과정을 DEWP 변수를 사용해서 수행하라.\
+
+
+- #### **code**
+```{r}
+table(train_data$DEWP)
+hist(train_data$DEWP)
+summary(train_data$DEWP)
+
+train_data$DEWP_group <- cut(train_data$DEWP, breaks = c(-Inf,-11,0,13,16,18,21,24,Inf), include.lowest = T, right=F)
+# train_data$DEWP_group <- cut(train_data$DEWP, breaks = c(-Inf,-20,-10,0,10,20,Inf), include.lowest = T, right=F)
+levels(train_data$DEWP_group)<-c('bone dry','super dry', 'dry', 'pleasant', 'damp', 'muggy', 'extremely hot', 'nasty')
+sv_reg_DEWP <- tapply(train_data$pm2.5, train_data$DEWP_group, mean)
+train_data$pred_pm2.5_DEWP <- (sv_reg_DEWP[train_data$DEWP_group])
+train_data$error <- train_data$pm2.5 - train_data$pred_pm2.5_DEWP
+head(train_data[,c('month', 'pm2.5', 'pred_pm2.5_DEWP', 'error')], 10)
+
+
+MSE_train <- round(mean(train_data$error ** 2),3)
+RMSE_train <- round(sqrt(MSE_train),3)
+
+test_data$DEWP_group <- cut(test_data$DEWP, breaks = c(-Inf,-11,0,13,16,18,21,24,Inf), include.lowest = T, right=F)
+# test_data$DEWP_group <- cut(test_data$DEWP, breaks = c(-Inf,-20,-10,0,10,20,Inf), include.lowest = T, right=F)
+test_data$pred_pm2.5_DEWP <- sv_reg_DEWP[test_data$DEWP_group]
+test_data$error <- test_data$pm2.5 - test_data$pred_pm2.5_DEWP
+
+MSE_test <- round(mean(test_data$error ** 2),3)
+RMSE_test <- round(sqrt(MSE_test),3)
+
+paste("train data: (MSE ", MSE_train,") (RMSE",RMSE_train, ")", sep=" ")
+paste("test data: (MSE ", MSE_test,") (RMSE",RMSE_test, ")", sep=" ")
+
+##Rsq
+RSS <- sum(train_data$error **2)
+RSS
+
+SStot <- sum((train_data$pm2.5 - mean(train_data$pm2.5))**2)
+Rsq_train <- round(1- RSS/SStot,3)
+Rsq_train
+
+paste("R2 for train data:", Rsq_train)
+
+RSS  <- sum(test_data$error **2)
+SStot <- sum((test_data$pm2.5 - mean(test_data$pm2.5))**2)
+Rsq_test <- round(1- RSS/SStot,3)
+
+paste("R2 for test data:", Rsq_test)
+
+```
+
+
+- #### **Solution** \
+data/measure|MSE|RMSE|R^2
+------------------|-------|---------|----------
+Train data|7530.763|86.78|0.104
+Test data|7969.39|89.271|0.089
+
+이슬점에 따른 습도를 공부한 후 그 데이터를 바탕으로 구간을 나누었다.\
+양수 구간만을 나누게 되면 음수 구간의 데이터가 너무 많아져 결과값이 제대로 도출되지 않기 때문에 음수구간을 한 번 더 쪼개었다.\
+나누는 기준은 1st quantile인 -11을 기준으로 c(-Inf,-11,0,13,16,18,21,24,Inf) 구간으로 나누었다.\
+최종적으로 RMSE와 R^2의 값을 살펴보게 되면 train_data가 test_data보다 좋게 나온 것을 확인할 수 있다.\
+RMSE는 작을 수록 R^2의 값을 크게 나오게 하는 값이기에 RMSE 값이 작은 train_data가 R^2의 값도 큰 것을 확인할 수 있다.\
+
+
+
+\
+
+
+#### Q5. 위에서 시도한 다양한 단일 변수 모델 중 어떤 모델이 가장 예측 성능이 뛰어난가? 예측 성능이 높은 이유가 무엇인지 생각해보자.\
+
+
+- #### **Solution** \
+
+다양한 변수 모델을 비교해보기 위해 앞에 나온 변수 3가지 (month, hour, dewp)의  train, test data의 R2 값들을 table로 정리하였다.\
+
+R2|Month|Hour|DEWP
+----|---------|------|----------
+Train data|0.017|0.01~0|0.104
+Test data|0.04|0.04|0.089
+
+
+R2 값이 1에 가까울수록 예측값과 실제 나온 결과 값의 일치하는 정확도가 높아지는 것이기 때문에 3가지 변수 중 R2의 값이 가장 높은 DewPoint로 pm2.5를 예측하는 것이 비교적 더 높은 정확도를 나타낸다. \
+Month와 Hour는 train값이 약 0.01, test가 0.04로 test 값이 더 높다.\
+DEWP는 train값이 0.104, test가 0.089로 test 값이 더 낮지만 전체적으로 확인해보면 DEWP값이 더 유의미 하다고 볼 수 있다.\
+그러나 결론적으로 R2값 자체가 0에 가깝기 때문에 정확한 예측이 가능한 모델링이라고 볼수는 없다. 
+
+
+\
+
+
+
+
+
+
+

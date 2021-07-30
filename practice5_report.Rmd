@@ -1,0 +1,29 @@
+---
+title: "practice5_report"
+author: "team8"
+date: "6/29/2021"
+output: html_document
+---
+#### Q1. weatherdf가 tidy가 아닌 이유를 설명하시오.
+연도, 월, 일의 일정을 개별 column으로 설정되어 있고
+특히 date는 X값이 1~31로 매월 1~31일까지의 날씨값이 다 따로 정해져있다.
+각 Date에 따른 Max,Mean,Min TemperatureF, Max,Mean,Min Dew.PointF, Max,Mean,Min Humidity, Max.Sea.level pressure in. 의 변수값이 따로 들어가.
+wide와 long dtaframe으로 데이터가 종류별로 분류되어있지 않고 펼쳐있어 untidy하다
+
+**TIDY가 아닌 이유**\
+**1. Tidy 기준 3가지(찾아야됨)에 부합하지 않음**\
+**2. observation는 관측값으로 보스턴에서 수집한 2014~2015년 매일매일의 날씨 정보다.**\
+**3. Column(variable)은 날씨에 해당하는 속성 온도, 이슬정도, 습도의 최대/최소/평균값, 최대 sea level pressure 등으로 구성되어 있다.**\
+**4. weather_df는 각 속성의 값, 일별 값을 개별 variable로 나눠져있어 필요이상의 wide table이 되어 있다.**\
+**5. 각 속성마다의 type은 다를 수 있지만 비교 분석이 가능할 수 있어야 한다.**\
+
+```{r}
+weather_df <- readRDS('/Users/kimjoowhan/Documents/University/semester5/Data Science/data/weather.rds')
+summary(weather_df)
+
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(lubridate)
+View(weather_df)
+```

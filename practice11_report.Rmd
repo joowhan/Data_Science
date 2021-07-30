@@ -1,0 +1,331 @@
+---
+title: "practice11_report"
+author: "team6"
+date: "7/7/2021"
+output: html_document
+---
+
+```{r}
+train_df <- read.csv('data/trainData.csv')
+test_df <- read.csv('data/testData.csv')
+
+dim(train_df)
+dim(test_df)
+
+glimpse(train_df)
+
+summary(train_df)
+summary(test_df)
+
+
+```
+
+
+```{r}
+#train grouped
+# train_df$LIMIT_BAL<-as.numeric((train_df$LIMIT_BAL))
+# train_df$LIMIT_BAL<-cut(train_df$LIMIT_BAL, breaks=c(0,10000,50000,140000,240000,Inf))
+# train_df$AGE<-cut(train_df$AGE, breaks=c(0,20,30,40,50,60,Inf))
+# train_df$BILL_AMT1<-cut(train_df$BILL_AMT1, breaks=c(-Inf,0,3559,22441,67345,Inf))
+# train_df$BILL_AMT2<-cut(train_df$BILL_AMT2, breaks=c(-Inf,0,2987,21345,64182,Inf))
+# train_df$BILL_AMT3<-cut(train_df$BILL_AMT3, breaks=c(-Inf,0,2691,20078,60260,Inf))
+# train_df$BILL_AMT4<-cut(train_df$BILL_AMT4, breaks=c(-Inf,0,2340,19030,54656,Inf))
+# train_df$BILL_AMT5<-cut(train_df$BILL_AMT5, breaks=c(-Inf,0,1787,18121,50229,Inf))
+# train_df$BILL_AMT6<-cut(train_df$BILL_AMT6, breaks=c(-Inf,0,1269,17129,49327,Inf))
+# train_df$PAY_AMT1<-cut(train_df$PAY_AMT1, breaks=c(0,1000,2100,5000,Inf))
+# train_df$PAY_AMT2<-cut(train_df$PAY_AMT2, breaks=c(0,1000,2000,5000,Inf))
+# train_df$PAY_AMT3<-cut(train_df$PAY_AMT3, breaks=c(0,500,1800,4500,Inf))
+# train_df$PAY_AMT4<-cut(train_df$PAY_AMT4, breaks=c(0,500,1500,4000,Inf))
+# train_df$PAY_AMT5<-cut(train_df$PAY_AMT5, breaks=c(0,300,1500,4000,Inf))
+# train_df$PAY_AMT6<-cut(train_df$PAY_AMT6, breaks=c(0,300,1500,4000,Inf))
+# 
+# #Test grouped
+# test_df$LIMIT_BAL<-as.numeric((test_df$LIMIT_BAL))
+# test_df$AGE<-cut(test_df$AGE, breaks=c(0,20,30,40,50,60,Inf))
+# test_df$LIMIT_BAL<-cut(test_df$LIMIT_BAL, breaks=c(0,10000,50000,140000,240000,Inf))
+# test_df$BILL_AMT1<-cut(test_df$BILL_AMT1, breaks=c(-Inf,0,3500,21900,65500,Inf))
+# test_df$BILL_AMT2<-cut(test_df$BILL_AMT2, breaks=c(-Inf,0,2950,20698,63022,Inf))
+# test_df$BILL_AMT3<-cut(test_df$BILL_AMT3, breaks=c(-Inf,0,2500,20300,59500,Inf))
+# test_df$BILL_AMT4<-cut(test_df$BILL_AMT4, breaks=c(-Inf,0,2200,19000,53000,Inf))
+# test_df$BILL_AMT5<-cut(test_df$BILL_AMT5, breaks=c(-Inf,0,1640,18000,50000,Inf))
+# test_df$BILL_AMT6<-cut(test_df$BILL_AMT6, breaks=c(-Inf,0,1150,16000,48600,Inf))
+# test_df$PAY_AMT1<-cut(test_df$PAY_AMT1, breaks=c(0,1000,2100,5000,Inf))
+# test_df$PAY_AMT2<-cut(test_df$PAY_AMT2, breaks=c(0,1000,2000,5000,Inf))
+# test_df$PAY_AMT3<-cut(test_df$PAY_AMT3, breaks=c(0,500,1500,4000,Inf))
+# test_df$PAY_AMT4<-cut(test_df$PAY_AMT4, breaks=c(0,500,1500,4000,Inf))
+# test_df$PAY_AMT5<-cut(test_df$PAY_AMT5, breaks=c(0,200,1500,4000,Inf))
+# test_df$PAY_AMT6<-cut(test_df$PAY_AMT6, breaks=c(0,200,1500,4000,Inf))
+# 
+
+```
+#### Q1.
+
+- #### **code**\
+```{r}
+## check variable names
+colnames(train_df)
+## check NA
+colSums(is.na(train_df))
+
+train_df[,4] <- sapply(train_df[,4], function(x){ifelse(x==0, 3, x)})
+test_df[,4] <- sapply(test_df[,4], function(x){ifelse(x==0, 3, x)})
+train_df[,c(6:11)]<-lapply(train_df[,c(6:11)],function(x){ifelse(x==-2|x==0,-1,x)})
+test_df[,c(6:11)]<-lapply(test_df[,c(6:11)],function(x){ifelse(x==-2|x==0,-1,x)})
+
+## change variable type
+str(train_df)
+train_df[,2:11] <- lapply(train_df[,2:11], factor)
+train_df[,5] <-as.numeric(train_df[,5])
+train_df$default.payment.next.month <- as.logical(train_df$default.payment.next.month)
+
+str(train_df)- 
+str(test_df)
+test_df[,2:11] <- lapply(test_df[,2:11], factor)
+test_df[,5] <-as.numeric(test_df[,5])
+
+
+str(test_df)
+
+history_pay <- c('PAY_1','PAY_2','PAY_3','PAY_4','PAY_5','PAY_6')
+prev_bill <- c('BILL_AMT1','BILL_AMT2','BILL_AMT3','BILL_AMT4','BILL_AMT5','BILL_AMT6')
+prev_pay <- c('PAY_AMT1', 'BILL_AMT2','BILL_AMT3','BILL_AMT4','BILL_AMT5','BILL_AMT6')
+
+y <- "default.payment.next.month"
+x <- c("LIMIT_BAL", "SEX", "EDUCATION", "MARRIAGE", "AGE", history_pay, prev_bill, prev_pay)
+
+fmla <- paste(y, paste(x, collapse = '+'), sep='~')
+print(fmla)
+
+model <- glm(fmla, data = train_df, family = binomial(link='logit'))
+
+train_df$prob <- predict(model, newdata = train_df, type='response')
+test_df$prob_default_test  <- predict(model, newdata = test_df, type = 'response')
+
+train_df[20:40, c('prob','default.payment.next.month')]
+
+aggregate(prob ~ default.payment.next.month, data = train_df, mean)
+
+threshold <- 0.3
+
+train_df$pred_default_train <- train_df$prob>threshold
+test_df$pred_default_test <- test_df$prob_default_test>threshold
+ncol(test_df)
+
+test_data <-test_df[,24:25] 
+pred_default_test <- test_df$pred_default_test
+prob_default_test <- test_df$prob_default_test
+str(test_data)
+
+save(pred_default_test, prob_default_test, file ="st21700165.RData")
+summary(model)
+
+```
+
+
+```{r}
+calcRMSE <- function(label, estimation){
+  return(sqrt(mean((label - estimation)**2)))
+}
+
+calcR2 <- function(label, estimation){
+  RSS <- sum((label-estimation)**2)
+  SStot <- sum((label-mean(label))**2)
+  
+  return(1-RSS/SStot)
+}
+
+get_accuracy <- function(pred, actual){
+  tble <- table(pred, actual)
+  return(round(sum(diag(tble))/ sum(tble), 3))
+}
+
+calAUC <- function(predCol, targetCol){
+  perf <- performance(prediction(predCol, targetCol), 'auc')
+  as.numeric(perf@y.values)
+}
+
+```
+
+
+```{r}
+##train data accuracy, recall, precision and F1
+
+conf.table <- table(train_df$default.payment.next.month, train_df$pred_default_train)
+## accuracy
+accuracy <-mean(train_df$default.payment.next.month== train_df$pred_default_train)
+# or
+get_accuracy(train_df$pred_default_train, train_df$default.payment.next.month)
+# ctab <- table(pred = train_df$prob >0.25, default=train_df$default.payment.next.month)
+
+##recall
+recall <- conf.table[2,2]/sum(conf.table[,2])
+
+##precision
+precision <- conf.table[2,2]/ sum(conf.table[2,])
+
+##F1
+F1.train <- 2 * precision * recall / (precision + recall)
+
+
+```
+- #### **Solution** \
+
+\
+#### Q2.
+
+- #### **code**\
+
+```{r}
+
+```
+
+- #### **Solution** \
+
+\
+
+
+
+#### Q3.
+
+- #### **code**\
+
+```{r}
+
+```
+
+- #### **Solution** \
+
+\
+
+
+#### Q4.
+
+- #### **code**\
+
+```{r}
+## threshold 0.5
+ctab.train <- table(pred = train_df$prob >0.5, default=train_df$default.payment.next.month)
+
+##recall
+recall <- ctab.train[2,2]/sum(ctab.train[,2])
+
+##precision
+precision <- ctab.train[2,2]/ sum(ctab.train[2,])
+
+##F1
+F1.train <- 2 * precision * recall / (precision + recall)
+
+ 
+```
+
+- #### **Solution** \
+
+\
+
+
+#### Q5.
+
+- #### **code**\
+
+```{r}
+library(car)
+vif(model)>10
+```
+
+- #### **Solution** \
+
+\
+
+
+#### Q6.
+
+- #### **code**\
+
+```{r}
+
+
+summary(model)
+
+history_pay <- c('PAY_1','PAY_2','PAY_3','PAY_4','PAY_5','PAY_6')
+prev_bill <- c('BILL_AMT1','BILL_AMT2','BILL_AMT3','BILL_AMT4','BILL_AMT5','BILL_AMT6')
+prev_pay <- c('PAY_AMT1', 'BILL_AMT2','BILL_AMT3','BILL_AMT4','BILL_AMT5','BILL_AMT6')
+
+y <- "default.payment.next.month"
+# x <- c("LIMIT_BAL", "SEX", "EDUCATION", "MARRIAGE", "AGE", history_pay,  paste(prev_bill, prev_pay, sep= '*'))
+# x <- c("LIMIT_BAL", "SEX", "EDUCATION", "MARRIAGE", "AGE", paste(history_pay,prev_bill, prev_pay, sep= '*'))
+x <- c("LIMIT_BAL", "SEX", "MARRIAGE", "AGE", paste(history_pay,prev_bill, prev_pay, sep= '*'))
+fmla <- paste(y, paste(x, collapse = '+'), sep='~')
+print(fmla)
+
+model <- glm(fmla, data = train_df, family = binomial(link='logit'))
+
+train_df$prob <- predict(model, newdata = train_df, type='response')
+test_df$prob_default_test  <- predict(model, newdata = test_df, type = 'response')
+
+train_df[20:40, c('prob','default.payment.next.month')]
+
+aggregate(prob ~ default.payment.next.month, data = train_df, mean)
+
+threshold <- 0.3
+
+train_df$pred_default_train <- train_df$prob>threshold
+test_df$pred_default_test <- test_df$prob_default_test>threshold
+ncol(test_df)
+
+test_data <-test_df[,24:25] 
+pred_default_test <- test_df$pred_default_test
+prob_default_test <- test_df$prob_default_test
+str(test_data)
+
+save(pred_default_test, prob_default_test, file ="st21700165.RData")
+
+```
+
+- #### **Solution** \
+
+\
+
+
+#### Q7.
+
+- #### **code**\
+
+```{r}
+
+model1 <- glm(default.payment.next.month ~ LIMIT_BAL*BILL_AMT1 + SEX + EDUCATION + MARRIAGE*SEX +
+      AGE + PAY_1 + PAY_2 + PAY_3 + PAY_4 + LIMIT_BAL*PAY_AMT1+BILL_AMT3 +
+      PAY_AMT1 + PAY_AMT2 + PAY_AMT4 + PAY_AMT5,
+              data = train_df, family = binomial(link='logit'))
+
+train_df$pred <- predict(model1, newdata=train_df, type ='response')
+test_df$pred1 <- predict(model1, newdata=test_df, type ='response')
+test_df$pred1_logical <- ifelse(test_df$pred1 > 0.5, TRUE, FALSE)
+
+calAUC <- function(predCol, targetCol){
+  perf <- performance(prediction(predCol, targetCol), 'auc')
+  as.numeric(perf@y.values)
+}
+
+AUC.train <- calAUC(train_df$pred, train_df$default.payment.next.month)
+
+print(paste("AUC on training set", round(AUC.train, 2)))
+plot(performance(prediction(train_df$pred, train_df$default.payment.next.month), 'tpr', 'fpr'))
+
+prob_default_test <- test_df$pred1
+pred_default_test <- test_df$pred1_logical
+save(prob_default_test, pred_default_test, file = "st21700165.RData")
+
+threshold1 <- 0.2
+test_df$pred1 <- predict(model1, newdata=test_df, type ='response')
+test_df$pred1_logical <- ifelse(test_df$pred1 > threshold1, TRUE, FALSE)
+
+prob_default_test <- test_df$pred1
+pred_default_test <- test_df$pred1_logical
+save(prob_default_test, pred_default_test, file = "st21700165.RData")
+```
+
+- #### **Solution** \
+
+\
+
+

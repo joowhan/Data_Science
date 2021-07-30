@@ -1,0 +1,494 @@
+---
+title: "practice8"
+author: "team8"
+date: "7/6/2021"
+output: html_document
+---
+
+```{r}
+prsa <- read.csv('data/PRSA_data.csv')
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(lubridate)
+library(ROCR)
+library(ggplot2)
+library(rpart)
+```
+
+#### Q1.  미세먼지 예보 기준에 따르면 PM2.5가 75(ug/mˆ3)를 초과할 때, “매우 나쁨”이 된다.\ 미세먼지가 매우 나쁨을 의미하는 bad_air column을 추가하자.\ 
+bad_air 변수의 값은 TRUE/FLASE이다.\
+이 때, PM2.5에 NA 존재하는 행은 삭제한다.\
+2010년부터 2013년까지의 데이터를 학습 데이터(train data), 2014년데이터를 테스트 데이터로 설정하자.\
+\
+
+\
+
+- #### **code**
+ 
+```{r}
+str(prsa)
+glimpse(prsa)
+
+#remove column
+prsa <-prsa[,-1]
+sum(is.na(prsa))
+colSums(is.na(prsa))
+
+prsa <- na.omit(prsa)
+prsa$bad_air <- ifelse(prsa$pm2.5>75, TRUE, FALSE)
+
+prsa$cbwd <- as.factor(prsa$cbwd)
+levels(prsa$cbwd)
+
+##divide into train data and test data
+train_data<-subset(prsa, prsa$year<2014)
+test_data <- subset(prsa, prsa$year==2014)
+
+## number of sample agter delete NA
+num_train <-nrow(train_data)
+num_test <-nrow(test_data)
+
+## rate after delete NA
+round(prop.table(table(prsa$year<2014))*100,2)
+
+#draw graph
+plot(density(train_data$pm2.5),xlim = c(0,1000), ylim=c(0,0.01))
+par(new = TRUE)
+lines(density(test_data$pm2.5), col="red")
+var(train_data$bad_air)
+var(test_data$bad_air)
+```
+ 
+- #### **Solution** \
+‘No’열은 index로 의미가 없는 열이기 때문에 제거해준다.\
+Colsums 함수를 사용하여 각 열에 있는 NA의 개수를 확인하고 na.omit을 사용하여 모든 NA를 제거했다.\
+pm2.5가 75보다 크면 TRUE, 작으면 FALSE를 나타내는 bad_air 열을 ifelse를 사용하여 만들었다.\
+현재 cbwd는 character로 취급되는데 cbwd 안에 level이 4개이니 factor로 변환해줬다.\
+다음으로 2010~2013년까지의 데이터를 subset 함수를 사용하여 train_data로 할당했고, 2014년의 데이터를 subset 함수를 사용하여 test_data로 할당했다.\
+train_data의 개수는 33096개, test_data의 개수는 8661개이고 nrow함수를 사용하여 비율을 확인하니 train_data의 비율이 80.01%, test_data의 비율은 19.99%인 8:2로 잘 나뉜 것을 확인 할 수 있다.\
+train_var은 8401.34863, test_var은 8748.14674이고, plot을 살펴봐도 유사하게 형성된 것을 확인 할 수 있다.\
+\
+
+
+\
+
+#### Q2. 학습데이터를 사용하여 미세먼지 나쁨여부(bad_air)를 예측하는 decision tree model(Best Model)을 만드시오.\
+학습데이터에서 사용가능한 모든 변수를 입력변수로 사용하여 미세먼지 나쁨여부(bad_air) 예측 decision tree 를 학습하시오.\
+학습에 사용가능한 변수와 사용할 수 없는 (혹은 사용하면 안되는) 변수가 있다면 무엇인지 설명하고, 제외하여 모델을 학습하시오.\
+\
+
+\
+
+- #### **code**\
+```{r}
+
+pm_model <- rpart(bad_air ~ month+day+hour+DEWP+TEMP+PRES+cbwd+Iws+Ir+Is, data=train_data, method="class", control= rpart.control(cp=0))
+
+
+library(rpart.plot)
+#rpart.plot(pm_model)
+
+
+```
+
+- #### **Solution** \
+overfitting이다. pm_model의 경우 year와 pm2.5를 제외하고 모두 입렵변수로 할당했다.\
+목적변수가 pm2.5의 높고 낮음을 기준으로 하는 bad_air이기 때문에 입력변수로써 pm2.5를 사용할 수 없다.\
+year의 경우에는 년도에 따라 미세먼지의 수치가 바뀐다고 할 수 없으므로 사용할 수 없다.\
+\
+
+\
+
+#### Q3. 문제 2에서 학습한 모델의 Accuracy, Precision, Recall, F1 값을 계산하여보라.\
+Train data와 Test data 둘다에 대해서 계산한 후 비교하여보라.\ 
+이 모델은 과적합인가 이유와 함께 설명하여라.\
+\
+
+\
+
+- #### **code**\
+```{r}
+##for train data
+train_data$pred <- predict(pm_model, train_data, type = 'class')
+conf.table <- table(train_data$bad_air, train_data$pred)
+accuracy1<-mean(train_data$bad_air == train_data$pred)
+
+##for test data
+test_data$pred <-predict(pm_model, test_data, type='class')
+conf.table.t<-table(test_data$bad_air, test_data$pred)
+accuracy1.t <- mean(test_data$bad_air == test_data$pred)
+
+##recall
+recall <- conf.table[2,2]/sum(conf.table[,2])
+recall.t <-conf.table.t[2,2]/sum(conf.table.t[,2])
+
+precision <- conf.table[2,2]/ sum(conf.table[2,])
+precision.t <- conf.table[2,2]/ sum(conf.table[2,])
+##F1
+
+F1.train <- 2 * precision * recall / (precision + recall)
+
+train_data <-train_data[-14]
+test_data <-test_data[-14]
+
+```
+
+- #### **Solution** \
+predict 함수를 사용하여 pm_model에 train_data 값을 넣어 예측한 값을 train_data에 ‘pred’라는 새로운 열로 만들었다.\
+conf.table은 bad_air를 예상한 것과 실제 bad_air인지를 나타낸 table이다.\
+mean 함수를 사용하여 bad_air와 pred가 일치할 때를 구하였다.\
+이 값은 accuracy로 train_data의 경우 0.8925248이, test_data의 경우 0.7275141이 도출되었는데 test_data의 accuracy가 train_data 보다 작으니 overfitting됐다고 할 수 있다.\
+precision은 bad_air가  TRUE로 나올 확률값을 나타내고 recall은 실제 bad_air가 FALSE로 나온 값의 비율이다.\
+
+train_data의 precision은 0.8887162, recall은 0.8899888이고, test_data의 precision은 0.7428503, recall은  0.7055467임을 알 수 있다. \
+F1.train의 값은 0.889352, F1.test의 값은 0.7237181로 종합적으로 봤을 때 accuracy, precision, recall, F1 값 모두 test_data가 train_data에 비해 작음을 알 수 있고 이는 과적합된 상태임을 나타낸다.\
+\
+
+
+\
+
+
+#### Q4.  pre-pruning 방식을 사용하여 과적합을 해소한 모델을 학습하여보라.\
+새롭게 학습한 모델의 Accuracy, Precision, Recall, F1 값을 계산하여보라.\
+과적합이 얼마나 해소되었는지, 성능은 어떻게 변화하였는지 설명하여라\
+\
+
+\
+
+- #### **code**\
+```{r}
+# pm_model <- rpart(bad_air ~ month+day+hour+DEWP+TEMP+PRES+cbwd+Iws+Ir+Is, data=train_data, method="class", control= rpart.control(cp=0, minsplit = 50))
+pm_model <- rpart(bad_air ~ month+day+hour+DEWP+TEMP+PRES+cbwd+Iws+Ir+Is, data=train_data, method="class", control= rpart.control(cp=0, minsplit = 100))
+# pm_model <- rpart(bad_air ~ month+day+hour+DEWP+TEMP+PRES+cbwd+Iws+Ir+Is, data=train_data, method="class", control= rpart.control(cp=0, minsplit = 200))
+# pm_model <- rpart(bad_air ~ month+day+hour+DEWP+TEMP+PRES+cbwd+Iws+Ir+Is, data=train_data, method="class", control= rpart.control(cp=0, minsplit = 300))
+
+
+##for train data
+train_data$pred <- predict(pm_model, train_data, type = 'class')
+conf.table <- table(train_data$bad_air, train_data$pred)
+accuracy2 <-mean(train_data$bad_air == train_data$pred)
+##for test data
+test_data$pred <-predict(pm_model, test_data, type='class')
+conf.table.t<-table(test_data$bad_air, test_data$pred)
+accuracy2.t <- mean(test_data$bad_air == test_data$pred)
+accuracy2- accuracy2.t 
+##recall
+recall_pre <- conf.table[2,2]/sum(conf.table[,2])
+recall.t_pre <-conf.table.t[2,2]/sum(conf.table.t[,2])
+
+precision_pre <- conf.table[2,2]/ sum(conf.table[2,])
+precision.t_pre <- conf.table[2,2]/ sum(conf.table[2,])
+
+##F1
+
+F1.train_pre <- 2 * precision_pre * recall_pre / (precision_pre + recall_pre)
+F1.t.train_pre <- 2 * precision.t_pre * recall.t_pre / (precision.t_pre + recall.t_pre)
+
+train_data <-train_data[-14]
+test_data <-test_data[-14]
+
+```
+
+- #### **Solution** \
+pre-pruning 방식에는 max depth와 minsplit을 활용하는 방안이 존재한다.\
+minsplit이 50일 경우 train_accuracy가 0.8465978, 100일 경우 0.8218214, 200일 경우 0.800701, 300일 경우 0.7916667이고, 50일 경우 test_accuracy가 0.7522226, 100일 경우 0.7471424, 200일 경우 0.732248, 300일 경우 0.7449486가 나온다.\
+accuracy가 높고 train_accuracy와 test_accuracy의 차이가 적게 나는 100을 기준점으로 선택하였다.\
+
+\
+
+
+max depth가 5일 경우 accuracy가 0.6665512, 8일 경우 0.7273987, 10일 경우 0.751068, 12일 경우 0.7436786로 max depth가 10일 경우 accuracy가 가장 크기 때문에 10을 선택했다.\
+
+
+\
+
+
+#### Q5. post-pruning 방식을 사용하여 과적합을 해소한 모델을 학습하여보라.
+새롭게 학습한 모델의 Accuracy, Precision, Recall, F1 값을 계산하여보라.
+과적합이 얼마나 해소되었는지, 성능은 어떻게 변화하였는지 설명하여라\
+
+\
+
+- #### **code**\
+```{r}
+ # prune → cp = 0.00045 , test accuracy : 0.7549936
+ # prune → cp = 0.00014 , test accuracy : 0.7434476
+ # prune → cp = 0.00024 , test accuracy : 0.7530308
+ # prune → cp = 0.00041 , test accuracy : 0.7561483
+ # prune → cp = 0.00023 , test accuracy : 0.7585729
+
+pm_model <- rpart(bad_air ~ month+day+hour+DEWP+TEMP+PRES+cbwd+Iws+Ir+Is, data=train_data, method="class", control= rpart.control(cp=0))
+
+plotcp(pm_model)
+##0.00035
+
+pm_model_pruned <- prune(pm_model, cp=0.00045)
+
+##for train data
+train_data$pred <- predict(pm_model_pruned, train_data, type = 'class')
+conf.table <- table(train_data$bad_air, train_data$pred)
+accuracy3 <-mean(train_data$bad_air == train_data$pred)
+
+##for test data
+test_data$pred <-predict(pm_model_pruned, test_data, type='class')
+conf.table.t<-table(test_data$bad_air, test_data$pred)
+accuracy3.t <- mean(test_data$bad_air == test_data$pred)
+accuracy3 - accuracy3.t
+
+##recall
+recall_post <- conf.table[2,2]/sum(conf.table[,2])
+recall.t_post <-conf.table.t[2,2]/sum(conf.table.t[,2])
+
+precision_post <- conf.table[2,2]/ sum(conf.table[2,])
+precision.t_post <- conf.table.t[2,2]/ sum(conf.table.t[2,])
+
+##F1
+
+F1.train_post <- 2 * precision_post * recall_post / (precision_post + recall_post)
+F1.t.train_post <- 2 * precision.t_post * recall.t_post / (precision.t_post + recall.t_post)
+```
+
+- #### **Solution** \
+post-pruning 방식을 쓰기 위해 우선 plotcp 함수를 써서 변화를 확인하였다. 그리고 변화율이 적은 cp값들을 몇가지 뽑아서 측정해 그 중에서 제일 accurancy가 괜찮고, overfitting이 적은 값으로 측정하였다. cp가 0.00045일 때 제일 overfitting이 작아 cp값으로 하고 측정한 결과 train data에서와 test 데이터에서의 차이가  0.07267968 발생하였다. 
+
+
+
+항목|Accuracy|Precision|Recall|F1
+-------------|----------------|------------|---------------|-------------		 	 	 		
+train|0.8261723|0.8408455|0.8408455|0.8246197
+test| 0.7534927|0.8408455|0.7875511|0.7778981
+
+위의 결과를 봤을 때 pre-pruning과 비교했을 때 F1는 높아졌으나, overfitting은 감소하였다. pre-pruning에서는 overfitting이 0.07467901, post-pruning에서는 overfitting이 0.07267968이었다.
+pre-pruning에서 accuracy는 train과 test에서 각각 0.8218214, 0.7471424였다. test data의 경우 post-pruning이  accuracy가 더 높다.   post-pruning과 비교했을 때 
+F1의 경우 pre-pruning과 post-pruning에서 train data의 경우, 0.8179433, 0.8246197이고, test data에서 pre-pruning은 0.7695633, post-pruning은 0.7778981로 높아졌다. F1이 높아지고, post-pruning에서 overfitting이 감소하였기에 성능이 좋아졌다고 볼 수 있다.\
+\
+
+
+
+#### Q6. 설명력이 높은 변수를 추가하거나, 중복되거나 의미없는 변수를 제거하는 과정을 feature engineering이라고 한다.\
+이러한 과정을 통해서 모델의 성능을 개선할 수 있다.\
+입력변수의 조정을 통해서 성능이 더 높은 모델을 학습하여보라. (이 때, 문제 4,5에서 적용했던 pruning 방식을 함께 적용해도 됨)\
+
+\
+
+- #### **code**\
+```{r}
+##
+summary(train_data)
+
+##delete day, Is, Ir
+pm_model <- rpart(bad_air ~ month+DEWP+TEMP+cbwd, data=train_data, method="class", control= rpart.control(cp=0,maxdepth = 10))
+#pruned
+pm_model_pruned2 <- prune(pm_model, cp = 0.00045)
+
+
+##for train data
+train_data$pred <- predict(pm_model_pruned2, train_data, type = 'class')
+conf.table <- table(train_data$bad_air, train_data$pred)
+accuracy4 <-mean(train_data$bad_air == train_data$pred)
+##for test data
+test_data$pred <-predict(pm_model_pruned2, test_data, type='class')
+conf.table.t<-table(test_data$bad_air, test_data$pred)
+accuracy4.t <- mean(test_data$bad_air == test_data$pred)
+
+##recall
+recall_post2 <- conf.table[2,2]/sum(conf.table[,2])
+recall.t_post2 <-conf.table.t[2,2]/sum(conf.table.t[,2])
+
+precision_post2 <- conf.table[2,2]/ sum(conf.table[2,])
+precision.t_post2 <- conf.table[2,2]/ sum(conf.table[2,])
+
+##F1
+
+F1.train_post2 <- 2 * precision_post2 * recall_post2 / (precision_post2 + recall_post2)
+F1.t.train_post2 <- 2 * precision.t_post2 * recall.t_post2 / (precision.t_post2 + recall.t_post2)
+
+
+
+
+```
+
+- #### **Solution** \
+입력변수 중 우선 필수적인 변수로 month, DEWP, TEMP, PRES, cbwd를 생각했다.\
+나머지 day, hour 변수는 미세먼지가 날짜나 시간에 큰 영향을 안받는다고 생각해서 제외했고, Iws, Is, Ir은 시간의 영향을 받는 것인데 hour를 제외했으므로 같이 제외했다.\
+다음으로 위 5개의 필수변수 중 month, DEWP, TEMP는 고정으로 들어간다고 생각해서 PRES와 cbwd를 체크하면서 가장 높은 accuracy 값을 구했다. month+DEWP+TEMP+cbwd 조합의 경우 train은 0.7809101, test는 0.7574183이, month+DEWP+TEMP+PRES 조합의 경우 train은 0.7847172, test는 0.7574183이, month+DEWP+TEMP+PRES+cbwd 조합의 경우 train은 0.7920595 test는(0.7577647)이 도출되었다.\
+그렇기에  month+DEWP+TEMP+PRES+cbwd 조합을 선택했다.\
+입력변수가 month+DEWP+TEMP+PRES+cbwd일때 train_data의 accuracy는  0.7920595, precision은0.8264221, recall은 0.7647127, F1은 0.7943707이고 test_data의 accuracy는 0.7577647, precision은0.8264221, recall은 0.7239957, F1은 0.7718256이다.\
+post-pruning 방법과 비교했을 때, accuracy가 train_data의 경우0.8261723이, test_data의 경우 0.7534927이었는데 의미없는 변수들을 제거한 후에는 train_data의 경우 0.7920595이, test_data의 경우 0.7577647로 둘 간의 간격이 더 줄어들었고, test_accuracy의 경우 소폭 상승하면서 성능이 좋아진 것을 확인할 수 있다.\
+\
+
+
+\
+
+
+#### Q7. 문제 2에서 6까지 얻은 모델 중 가장 성능이 높은 모델을 선정하여. ROC커브를 그리고 AUC를 계산하시오.\
+- Train 데이터, Test 데이터 모두에 대해서
+- Hint, decision tree model의 predict 명령에서 type = ‘prob’를 하면 확률 값을 얻을 수 있습니다.
+\
+
+- #### **code**\
+```{r}
+##for train data
+train_data$pred_prob <- predict(pm_model_pruned2, train_data, type = 'prob')
+
+pred <- prediction(train_data$pred_prob[, 2], train_data$bad_air)
+plot(performance(pred, 'tpr', 'fpr'))
+AUC_train <- performance(pred, 'auc')
+as.numeric(AUC_train@y.values)
+
+test_data$pred_prob <- predict(pm_model_pruned2, test_data, type = 'prob')
+pred_test <- prediction(test_data$pred_prob[, 2], test_data$bad_air)
+plot(performance(pred_test, 'tpr', 'fpr'))
+AUC_test <- performance(pred_test, 'auc')
+as.numeric(AUC_test@y.values)
+
+```
+
+- #### **Solution** \
+predict에서 type을 ‘prob’로 해서 확률값을 받아서 이를  train과 test에 대한 ROC curve로 그렸다.
+train에서 AUC 값은 0.8326873, test에서 AUC 값은 0.8010294였다. Finding best model 자료에 의하면 .80 ~.90은 good model이라고 볼 수 있기에 위에서 사용한 model은 좋은 model이라고 판단할 수 있다.\
+
+\
+
+
+#### Q8.문제 7에서 선정한 모델에서 threshold를 0에서 1까지 변경할 때, Accuracy, Precision, Recall, F1 값의 변화를 확인하여라. threshold를 얼마로 선정하는 것이 가장 적절할 것인지 판단하여 설명하여라.\
+- 모델의 예측 결과에 따라 우리는 미세먼지 농도를 “매우 나쁨”으로 예보하거나 “매우 나쁨은 아님”으 로 예보하게 된다고 하자. False Positive와 False Negative의 비용에 대해서 생각해보고, 이런 맥락에서 Precision과 Recall을 어떤 수준으로 조정해야하는지, 그에 따른 threshold를 생각해보자.\
+\
+
+- #### **code**\
+```{r}
+# train_data$pred_prob <- train_data$pred_prob[,2]
+# threshold <- 0.4
+# train_data$prediction <- train_data$pred_prob >threshold
+
+train_data$est.prop <- train_data$pred_prob[,2]
+threshold <- 0.5
+train_data$prediction <- train_data$est.prop > threshold
+conf.table <- table(pred = train_data$prediction, actual = train_data$bad_air)
+# conf.table
+accuracy <- sum(diag(conf.table))  / sum(conf.table)
+# accuracy
+
+#test
+test_data$est.prop <- test_data$pred_prob[,2]
+threshold <- 0.5
+test_data$prediction <- test_data$est.prop > threshold
+conf.table.t <- table(pred = test_data$prediction, actual = test_data$bad_air)
+# conf.table.t
+accuracy.t <- sum(diag(conf.table.t))  / sum(conf.table.t)
+# accuracy.t
+precision <- conf.table[2,2] / sum(conf.table[ 2, ])
+recall <- conf.table[2,2] / sum(conf.table[ , 2])
+precision.t <- conf.table.t[2,2] / sum(conf.table.t[ 2, ])
+recall.t <- conf.table.t[2,2] / sum(conf.table.t[ , 2])
+F1.train <- 2* precision*recall / (precision + recall)
+F1.test <- 2* precision.t*recall.t / (precision.t + recall.t)
+# print(paste("accuracy on training set", round(accuracy, 2)))
+# print(paste("accuracy on testing set", round(accuracy.t, 2)))
+# print(c(precision,recall,precision.t,recall.t,F1.train,F1.test))
+
+#0.1
+threshold1 <- 0.1
+train_data$prediction <- train_data$est.prop > threshold1
+conf.table1 <- table(pred = train_data$prediction, actual = train_data$bad_air)
+test_data$prediction <- test_data$est.prop > threshold1
+conf.table.t1 <- table(pred = test_data$prediction, actual = test_data$bad_air)
+precision1 <- conf.table1[2,2] / sum(conf.table1[ 2, ])
+recall1 <- conf.table1[2,2] / sum(conf.table1[ , 2])
+precision.t1 <- conf.table.t1[2,2] / sum(conf.table.t1[ 2, ])
+recall.t1 <- conf.table.t1[2,2] / sum(conf.table.t1[ , 2])
+F1.train1 <- 2* precision1*recall1 / (precision1 + recall1)
+F1.test1 <- 2* precision.t1*recall.t1 / (precision.t1 + recall.t1)
+
+accuracy1 <- sum(diag(conf.table1))  / sum(conf.table1)
+accuracy.t1 <- sum(diag(conf.table.t1))  / sum(conf.table.t1)
+# print(paste("accuracy on training set", round(accuracy1, 2)))
+# print(paste("accuracy on testing set", round(accuracy.t1, 2)))
+# print(c(precision1,recall1,precision.t1,recall.t1,F1.train1,F1.test1))
+
+#0.2
+threshold2 <- 0.2
+train_data$prediction <- train_data$est.prop > threshold2
+conf.table2 <- table(pred = train_data$prediction, actual = train_data$bad_air)
+test_data$prediction <- test_data$est.prop > threshold2
+conf.table.t2 <- table(pred = test_data$prediction, actual = test_data$bad_air)
+precision2 <- conf.table2[2,2] / sum(conf.table2[ 2, ])
+recall2 <- conf.table2[2,2] / sum(conf.table2[ , 2])
+precision.t2 <- conf.table.t2[2,2] / sum(conf.table.t2[ 2, ])
+recall.t2 <- conf.table.t2[2,2] / sum(conf.table.t2[ , 2])
+F1.train2 <- 2* precision2*recall2 / (precision2 + recall2)
+F1.test2 <- 2* precision.t2*recall.t2 / (precision.t2 + recall.t2)
+
+accuracy2 <- sum(diag(conf.table2))  / sum(conf.table2)
+# accuracy2
+accuracy.t2 <- sum(diag(conf.table.t2))  / sum(conf.table.t2)
+# accuracy.t2
+# print(paste("accuracy on training set", round(accuracy2, 2)))
+# print(paste("accuracy on testing set", round(accuracy.t2, 2)))
+# print(c(precision2,recall2,precision.t2,recall.t2,F1.train2,F1.test2))
+
+#0.3
+threshold3 <- 0.3
+train_data$prediction <- train_data$est.prop > threshold3
+conf.table3 <- table(pred = train_data$prediction, actual = train_data$bad_air)
+test_data$prediction <- test_data$est.prop > threshold3
+conf.table.t3 <- table(pred = test_data$prediction, actual = test_data$bad_air)
+precision3 <- conf.table3[2,2] / sum(conf.table3[ 2, ])
+recall3 <- conf.table3[2,2] / sum(conf.table3[ , 2])
+precision.t3 <- conf.table.t3[2,2] / sum(conf.table.t3[ 2, ])
+recall.t3 <- conf.table.t3[2,2] / sum(conf.table.t3[ , 2])
+F1.train3 <- 2* precision3*recall3 / (precision3 + recall3)
+F1.test3 <- 2* precision.t3*recall.t3 / (precision.t3 + recall.t3)
+
+accuracy3 <- sum(diag(conf.table3))  / sum(conf.table3)
+# accuracy3
+accuracy.t3 <- sum(diag(conf.table.t3))  / sum(conf.table.t3)
+# accuracy.t3
+# print(paste("accuracy on training set", round(accuracy3, 2)))
+# print(paste("accuracy on testing set", round(accuracy.t3, 2)))
+# print(c(precision3,recall3,precision.t3,recall.t3,F1.train3,F1.test3))
+
+#0.4
+threshold4 <- 0.9
+train_data$prediction <- train_data$est.prop > threshold4
+conf.table4 <- table(pred = train_data$prediction, actual = train_data$bad_air)
+test_data$prediction <- test_data$est.prop > threshold4
+conf.table.t4 <- table(pred = test_data$prediction, actual = test_data$bad_air)
+precision4 <- conf.table4[2,2] / sum(conf.table4[ 2, ])
+recall4 <- conf.table4[2,2] / sum(conf.table4[ , 2])
+precision.t4 <- conf.table.t4[2,2] / sum(conf.table.t4[ 2, ])
+recall.t4 <- conf.table.t4[2,2] / sum(conf.table.t4[ , 2])
+F1.train4 <- 2* precision4*recall4 / (precision4 + recall4)
+F1.test4 <- 2* precision.t4*recall.t4 / (precision.t4 + recall.t4)
+
+accuracy4 <- sum(diag(conf.table4))  / sum(conf.table4)
+# accuracy4
+accuracy.t4 <- sum(diag(conf.table.t4))  / sum(conf.table.t4)
+# accuracy.t4
+# print(paste("accuracy on training set", round(accuracy4, 2)))
+# print(paste("accuracy on testing set", round(accuracy.t4, 2)))
+# print(c(precision4,recall4,precision.t4,recall.t4,F1.train4,F1.test4))
+
+```
+
+
+- #### **Solution** \
+
+항목|Accuracy|Accuracy.t|Precision|Precision.t|Recall|Recall.t|F1|F1.t
+----------|--------------|------------|-------------|----------|-----------|------------|------------|------------		 	 	 		
+0.1|0.65|0.64|0.5860503|0.9789245|0.5740848|0.9572218|0.7331735|0.7177223
+0.2|0.73|0.67|0.6496329|0.9460367|0.6055396|0.9142033|0.0.7703055|0.0.7285263
+0.3|0.75|0.68|0.6734989|0.9253963|0.6182976|0.8868061|0.7796051|0.7286010
+0.4|0.77|0.7|0.7262124|0.8593099|0.6504002|0.800769|0.7871747|0.7177941
+0.5|0.79|0.74|0.7901211|0.7667392|0.7378882|0.7137707|0.7782546|0.7256291
+0.6|0.79|0.75|0.8042152|0.7377681|0.7578947|0.6921413|0.76956|0.7235272
+0.7|0.77|0.73|0.826616|0.6630401|0.7806552|0.6012978|0.7358471|0.6793375
+0.8|0.69|0.66|0.8823144|0.4190239|0.8182757|0.380918|0.568201|0.5198426
+0.9|0.59|0.58|0.9400200|0.1753808|0.8923077|0.1393896|0.2956093|0.2411141
+
+
+
+우선, 미세먼지의 농도를 예측하기 위한 단일변수설정의 과정이라는 것을 잘 이해하고 고려할 필요가 있다. 미세먼지는 분명 해로워서, 미세먼지가 짙은날은 피하는 것이 좋다 하지만 그렇다고 암세포의 검사결과 만큼 삶에 크리티컬이 강한 요인은 분명 아니다. 정밀도(precision)와 재현율(recall)은 높을수록 좋지만, 함께 높아질수는 없으며, 미세먼지의 경우에도 높은 재현율이 이상적이긴 하지만, 암세포 만큼이나 삶에 크리티컬한 요인이라고는 할 수 없다는 점에 주목하여, 어느정도 현실과의 타협이 필요하다고 판단하였다. threshold 의 값에 따라 나타난 모델들의 평가지표 수치를 살펴보면, 각 threshold 값에 따른 모델들의 성격을 알 수 있다. 언뜻 생각하기에는 무작정 precision, 즉 정밀도가 높아지면 좋은 모델이라고 판단하면 될 것 같지만, 앞서 언급했듯, 미세먼지의 농도같은 경우에는 현실과의 타협이 필요하다. 따라서, 우리 조는 단순히 accuracy 와 precision 뿐만이 아니라, 미세먼지의 정도를 예측하려는 모델임을 고려하여, 적절한 recall 수치를 선정하기로 했다. 너무 높은 recall 수치를 갖는 모델의 경우, 미세먼지의 농도가 높지 않은 경우에도 높다고 예측하여 사람들의 일상생활에 지장을 줄 수 있는 경우가 많을 수 있으므로, 너무 높은 recall 수치를 갖는 모델은 과감히 제외하였다. F1지표의 경우 precision과 recall을 적절히 균등하게 반영될 수 있도록 둘의 조화평균을 계산한 값인데, 단순히 F1 지표만으로 모델을 설정하기에는 recall 값에 대해 조금 더 가중하여 고려해야 할 것 같았다. 그래서 우선 F1의 값이 가장 높은 3개의 모델을 선정했고, 그 중에서도 recall의 값이 가장 낮은 모델이 가장 적합하다고 판단했다. 그래서 우리조는 threshold의 값을 0.6으로 최종 결정했다.\
+
+\
